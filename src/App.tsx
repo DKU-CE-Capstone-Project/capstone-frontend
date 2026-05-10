@@ -1,6 +1,7 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  ExternalLink,
   FileText,
   LineChart,
   Lock,
@@ -15,8 +16,12 @@ import {
   type Report,
 } from './data/mockData';
 import {
+  createAndCacheReport,
   dynNews,
   fetchAndCacheCluster,
+  fetchAndCacheNewsMap,
+  fetchAndCacheNewsSource,
+  fetchRecommendedKeywordLabels,
   findOrResolveClusterByQuery,
   resolveCluster,
   resolveNews,
@@ -44,6 +49,9 @@ function App() {
   const [detailNewsId, setDetailNewsId] = useState(clusters[0].mainNewsId);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [recommendedKeywords, setRecommendedKeywords] = useState(
+    clusters[0].recommendedKeywords.slice(0, 8),
+  );
 
   const activeCluster = resolveCluster(activeClusterId);
   const visibleNews = useMemo(
@@ -53,6 +61,21 @@ function App() {
   );
   const centerNews = resolveNews(centerNewsId);
   const report = resolveReport(activeCluster.reportId);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchRecommendedKeywordLabels(8)
+      .then((keywords) => {
+        if (isMounted && keywords.length > 0) setRecommendedKeywords(keywords);
+      })
+      .catch(() => {
+        if (isMounted) setErrorMsg('추천 키워드 API 호출 실패 — 기본 키워드로 표시합니다.');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const navigate = (nextScreen: Screen) => {
     setHistory((prev) => [...prev, screen]);
@@ -68,20 +91,10 @@ function App() {
     });
   };
 
-  /** Resolve cluster from term — tries API first, falls back to static mock */
+  /** Resolve cluster from the 9주차 /api/v1 search API, with static fallback. */
   const loadCluster = async (term: string): Promise<IssueCluster> => {
     const trimmed = term.trim();
     if (!trimmed) return findOrResolveClusterByQuery('');
-
-    // If static mock has a match, use it immediately (no network call)
-    const staticMatch = clusters.find(
-      (c) =>
-        c.query.toLowerCase().includes(trimmed.toLowerCase()) ||
-        c.recommendedKeywords.some((k) => k.toLowerCase().includes(trimmed.toLowerCase())),
-    );
-    if (staticMatch) return staticMatch;
-
-    // Otherwise hit the API
     return fetchAndCacheCluster(trimmed);
   };
 
@@ -110,10 +123,23 @@ function App() {
     }
   };
 
-  const openNewsMap = (newsId: string) => {
-    setCenterNewsId(newsId);
-    setDetailNewsId(newsId);
-    navigate('newsMap');
+  const openNewsMap = async (newsId: string) => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const nextCluster = await fetchAndCacheNewsMap(newsId, activeClusterId);
+      setActiveClusterId(nextCluster.id);
+      setCenterNewsId(newsId);
+      setDetailNewsId(newsId);
+      navigate('newsMap');
+    } catch {
+      setCenterNewsId(newsId);
+      setDetailNewsId(newsId);
+      setErrorMsg('뉴스맵 API 호출 실패 — 현재 뉴스 목록으로 표시합니다.');
+      navigate('newsMap');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const openKeywordNewsMap = async (term: string) => {
@@ -121,10 +147,13 @@ function App() {
     setErrorMsg(null);
     try {
       const nextCluster = await loadCluster(term);
+      const mapCluster = await fetchAndCacheNewsMap(nextCluster.mainNewsId, nextCluster.id).catch(
+        () => nextCluster,
+      );
       setQuery(term || nextCluster.query);
-      setActiveClusterId(nextCluster.id);
-      setCenterNewsId(nextCluster.mainNewsId);
-      setDetailNewsId(nextCluster.mainNewsId);
+      setActiveClusterId(mapCluster.id);
+      setCenterNewsId(mapCluster.mainNewsId);
+      setDetailNewsId(mapCluster.mainNewsId);
       navigate('newsMap');
     } catch {
       const fallback = findOrResolveClusterByQuery(term);
@@ -137,13 +166,33 @@ function App() {
     }
   };
 
-  const openDetail = (newsId: string) => {
-    setDetailNewsId(newsId);
-    navigate('newsDetail');
+  const openDetail = async (newsId: string) => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      await fetchAndCacheNewsSource(newsId);
+    } catch {
+      setErrorMsg('원문 링크 API 호출 실패 — 기본 뉴스 정보로 표시합니다.');
+    } finally {
+      setDetailNewsId(newsId);
+      navigate('newsDetail');
+      setIsLoading(false);
+    }
   };
 
-  const openReport = () => {
-    navigate('report');
+  const openReport = async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      await createAndCacheReport(activeCluster.id, centerNewsId, activeCluster.relatedNewsIds);
+      setActiveClusterId(activeCluster.id);
+      navigate('report');
+    } catch {
+      setErrorMsg('리포트 API 호출 실패 — 기본 리포트로 표시합니다.');
+      navigate('report');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -156,6 +205,7 @@ function App() {
           <HomeView
             query={query}
             setQuery={setQuery}
+            keywords={recommendedKeywords}
             onSearch={() => openCluster(query)}
             onKeyword={openCluster}
           />
@@ -175,7 +225,6 @@ function App() {
             centerNews={centerNews}
             relatedNews={visibleNews}
             onOpenDetail={openDetail}
-            onOpenReport={openReport}
           />
         )}
 
@@ -260,16 +309,16 @@ function HeaderBar({ screen }: { screen: Screen }) {
 function HomeView({
   query,
   setQuery,
+  keywords,
   onSearch,
   onKeyword,
 }: {
   query: string;
   setQuery: (q: string) => void;
+  keywords: string[];
   onSearch: () => void;
   onKeyword: (kw: string) => void;
 }) {
-  const keywords = clusters[0].recommendedKeywords;
-
   const submit = (e: FormEvent) => {
     e.preventDefault();
     onSearch();
@@ -371,12 +420,10 @@ function NewsMapView({
   centerNews,
   relatedNews,
   onOpenDetail,
-  onOpenReport,
 }: {
   centerNews: NewsCard;
   relatedNews: NewsCard[];
   onOpenDetail: (newsId: string) => void;
-  onOpenReport: () => void;
 }) {
   return (
     <section className="map-view view-surface">
@@ -386,10 +433,6 @@ function NewsMapView({
         onOpenDetail={onOpenDetail}
       />
       <PremiumPreview />
-      <button type="button" className="floating-report" onClick={onOpenReport}>
-        <FileText size={18} aria-hidden="true" />
-        리포트
-      </button>
     </section>
   );
 }
@@ -432,6 +475,15 @@ function DetailView({
           <h2>{detailNews.title}</h2>
           <p className="lead">{detailNews.summary}</p>
           <p>{detailNews.mockOriginalBody}</p>
+          {detailNews.sourceUrl ? (
+            <div className="source-link-card">
+              <span>원문 링크</span>
+              <a href={detailNews.sourceUrl} target="_blank" rel="noreferrer">
+                {detailNews.sourceUrl}
+                <ExternalLink size={16} aria-hidden="true" />
+              </a>
+            </div>
+          ) : null}
           <div className="tag-list">
             {detailNews.keywords.map((kw) => (
               <span key={kw}>{kw}</span>
