@@ -7,6 +7,7 @@ export type NewsCard = {
   publishedAt: string;
   summary: string;
   mockOriginalBody: string;
+  sourceUrl?: string;
   thumbnailTone: 'oil' | 'chip' | 'ai' | 'defense' | 'shipping' | 'currency';
   imageUrl: string;
   keywords: string[];
