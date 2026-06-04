@@ -19,7 +19,7 @@ import {
   createAndCacheReport,
   dynNews,
   fetchAndCacheCluster,
-  fetchAndCacheNewsMap,
+  fetchAndCacheNewsCluster,
   fetchAndCacheNewsSource,
   fetchRecommendedKeywordLabels,
   findOrResolveClusterByQuery,
@@ -34,7 +34,7 @@ const PROJECT_TITLE = '실시간 뉴스 기반 멀티 에이전트 투자 판단
 
 const viewNames: Record<Screen, string> = {
   home: '검색창',
-  searchResults: '검색된 키워드 뉴스',
+  searchResults: '키워드 맵',
   newsMap: '뉴스맵',
   newsDetail: '뉴스 자세히 보기',
   report: '레포트',
@@ -91,7 +91,7 @@ function App() {
     });
   };
 
-  /** Resolve cluster from the 9주차 /api/v1 search API, with static fallback. */
+  /** Build the keyword-only map first; news search is deferred until a keyword node is opened. */
   const loadCluster = async (term: string): Promise<IssueCluster> => {
     const trimmed = term.trim();
     if (!trimmed) return findOrResolveClusterByQuery('');
@@ -123,37 +123,15 @@ function App() {
     }
   };
 
-  const openNewsMap = async (newsId: string) => {
-    setIsLoading(true);
-    setErrorMsg(null);
-    try {
-      const nextCluster = await fetchAndCacheNewsMap(newsId, activeClusterId);
-      setActiveClusterId(nextCluster.id);
-      setCenterNewsId(newsId);
-      setDetailNewsId(newsId);
-      navigate('newsMap');
-    } catch {
-      setCenterNewsId(newsId);
-      setDetailNewsId(newsId);
-      setErrorMsg('뉴스맵 API 호출 실패 — 현재 뉴스 목록으로 표시합니다.');
-      navigate('newsMap');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const openKeywordNewsMap = async (term: string) => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const nextCluster = await loadCluster(term);
-      const mapCluster = await fetchAndCacheNewsMap(nextCluster.mainNewsId, nextCluster.id).catch(
-        () => nextCluster,
-      );
+      const nextCluster = await fetchAndCacheNewsCluster(term);
       setQuery(term || nextCluster.query);
-      setActiveClusterId(mapCluster.id);
-      setCenterNewsId(mapCluster.mainNewsId);
-      setDetailNewsId(mapCluster.mainNewsId);
+      setActiveClusterId(nextCluster.id);
+      setCenterNewsId(nextCluster.mainNewsId);
+      setDetailNewsId(nextCluster.mainNewsId);
       navigate('newsMap');
     } catch {
       const fallback = findOrResolveClusterByQuery(term);
@@ -215,7 +193,6 @@ function App() {
           <SearchResultsView
             cluster={activeCluster}
             errorMsg={errorMsg}
-            onOpenNewsMap={openNewsMap}
             onOpenKeywordNewsMap={openKeywordNewsMap}
           />
         )}
@@ -356,12 +333,10 @@ function HomeView({
 function SearchResultsView({
   cluster,
   errorMsg,
-  onOpenNewsMap,
   onOpenKeywordNewsMap,
 }: {
   cluster: IssueCluster;
   errorMsg: string | null;
-  onOpenNewsMap: (newsId: string) => void;
   onOpenKeywordNewsMap: (kw: string) => void;
 }) {
   const keywordNodes = getSearchKeywordNodes(cluster);
@@ -395,9 +370,7 @@ function SearchResultsView({
             key={`${node.keyword}-${i}`}
             type="button"
             className={`keyword-map-node keyword-map-node-${i}`}
-            onClick={() =>
-              node.newsId ? onOpenNewsMap(node.newsId) : onOpenKeywordNewsMap(node.keyword)
-            }
+            onClick={() => onOpenKeywordNewsMap(node.keyword)}
             aria-label={`${node.keyword} 관련 뉴스 보기`}
           >
             {node.keyword}
@@ -407,7 +380,7 @@ function SearchResultsView({
       <div className="result-search-strip">
         <Search size={16} aria-hidden="true" />
         <span>{cluster.query}</span>
-        <button type="button" onClick={() => onOpenNewsMap(cluster.mainNewsId)}>
+        <button type="button" onClick={() => onOpenKeywordNewsMap(cluster.query)}>
           열기
         </button>
       </div>
@@ -698,17 +671,15 @@ function MiniChart() {
 
 // ── Pure utility functions ────────────────────────────────────────────────────
 function getSearchKeywordNodes(cluster: IssueCluster) {
-  const clusterNews = [cluster.mainNewsId, ...cluster.relatedNewsIds].map(resolveNews);
-  const nodes: Array<{ keyword: string; newsId?: string }> = [];
+  const nodes: Array<{ keyword: string }> = [];
   const seen = new Set<string>();
 
-  const push = (keyword: string, newsId?: string) => {
+  const push = (keyword: string) => {
     if (seen.has(keyword)) return;
     seen.add(keyword);
-    nodes.push({ keyword, newsId });
+    nodes.push({ keyword });
   };
 
-  clusterNews.forEach((news) => push(news.keywords[0], news.id));
   cluster.recommendedKeywords.forEach((kw) => push(kw));
 
   return nodes.slice(0, 11);
