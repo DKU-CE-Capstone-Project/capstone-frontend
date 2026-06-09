@@ -93,14 +93,18 @@ VITE_API_BASE=http://127.0.0.1:8000
 2. 검색 결과
    - 키워드 검색 시 `GET /api/v1/news/search`를 호출합니다.
    - 백엔드 응답을 프론트 내부 `IssueCluster`, `NewsCard` 형태로 변환합니다.
+   - 뉴스 카드 이미지는 백엔드의 `thumbnail_url`을 우선 사용하고, 없을 때만 프론트 fallback 이미지를 사용합니다.
 
 3. 뉴스맵
    - 중심 뉴스 기준으로 `GET /api/v1/news/{news_id}/graph`와 `GET /api/v1/news/{news_id}/related`를 호출합니다.
    - 관련 뉴스는 원형 노드 형태로 표시됩니다.
+   - 연관 뉴스 이미지는 `related.thumbnail_url` → 기존 캐시 이미지 → 프론트 fallback 이미지 순서로 결정합니다.
 
 4. 뉴스 상세
    - `GET /api/v1/news/{news_id}/source`를 호출해 원문 출처 정보를 가져옵니다.
+   - 백엔드가 `original_body`를 반환하면 상세 본문에 저장해 기존 mock 본문 대신 표시합니다.
    - 원문 링크는 본문과 분리된 `원문 링크` 영역에 표시됩니다.
+   - 상세 화면의 대표 이미지는 검색/연관 뉴스 응답에서 캐시한 백엔드 이미지 URL을 그대로 사용합니다.
 
 5. 리포트
    - `POST /api/v1/reports`로 리포트를 생성합니다.
@@ -141,6 +145,7 @@ src/
 - API 요청이 실패한 경우
 - 아직 API 응답을 받기 전 초기 렌더링 상태
 - 리포트/전략 API가 백엔드 fallback 문구를 반환한 경우
+- 백엔드가 `thumbnail_url`을 비워 반환한 경우 해당 카드 이미지만 프론트 fallback 이미지로 대체됩니다.
 
 백엔드 mock 뉴스 JSON은 프론트 저장소가 아니라 백엔드 저장소의 `fixtures/news_mock.json`에 있습니다.
 

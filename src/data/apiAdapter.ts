@@ -70,6 +70,7 @@ type ApiSourceResponse = {
   source_url: string;
   published_at: string;
   original_title: string;
+  original_body?: string;
 };
 
 type ApiGraphNode = {
@@ -191,11 +192,35 @@ export async function fetchRecommendedKeywordLabels(limit = 8): Promise<string[]
 
 export async function fetchAndCacheCluster(term: string): Promise<IssueCluster> {
   const trimmed = term.trim();
-  const clusterId = `api-v1-${slugify(trimmed)}`;
+  if (!trimmed) return staticClusters[0];
+
+  const clusterId = `keyword-${slugify(trimmed)}`;
 
   if (dynClusters.has(clusterId)) {
     return dynClusters.get(clusterId)!;
   }
+
+  const recommendedKeywords = await fetchRecommendedKeywordLabels(10).catch(() => []);
+  const keywords = unique([trimmed, ...recommendedKeywords]).slice(0, 11);
+
+  const cluster: IssueCluster = {
+    id: clusterId,
+    query: trimmed,
+    mainNewsId: '',
+    relatedNewsIds: [],
+    recommendedKeywords: keywords.length > 0 ? keywords : staticClusters[0].recommendedKeywords,
+    reportId: `${clusterId}-report-placeholder`,
+  };
+
+  dynClusters.set(clusterId, cluster);
+  return cluster;
+}
+
+export async function fetchAndCacheNewsCluster(term: string): Promise<IssueCluster> {
+  const trimmed = term.trim();
+  if (!trimmed) return staticClusters[0];
+
+  const clusterId = `api-v1-${slugify(trimmed)}`;
 
   const params = new URLSearchParams({
     q: trimmed,
@@ -267,7 +292,7 @@ export async function fetchAndCacheNewsSource(newsId: string): Promise<NewsCard>
     title: source.original_title || existing.title,
     source: source.source_name || existing.source,
     publishedAt: formatDate(source.published_at) || existing.publishedAt,
-    mockOriginalBody: existing.mockOriginalBody,
+    mockOriginalBody: source.original_body || existing.mockOriginalBody,
     sourceUrl: source.source_url || existing.sourceUrl,
   };
   dynNews.set(newsId, updated);
