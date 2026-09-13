@@ -551,8 +551,13 @@ function findKnownNews(id: string): NewsCard | undefined {
   return dynNews.get(id) ?? staticNewsCards.find((news) => news.id === id);
 }
 
+// 로그인이 없으므로 백엔드가 발급하는 세션 쿠키(econmind_sid)로 사용자를 구분한다.
+// credentials: 'include' 가 없으면 브라우저가 쿠키를 싣지도, 저장하지도 않아
+// 매 요청이 새 세션으로 잡히고 사용자별 마인드맵이 동작하지 않는다.
+const CREDENTIALS: RequestCredentials = 'include';
+
 async function apiGet<T>(path: string): Promise<T> {
-  const resp = await fetch(`${API_V1}${path}`);
+  const resp = await fetch(`${API_V1}${path}`, { credentials: CREDENTIALS });
   if (!resp.ok) throw new Error(`API GET ${path} failed with ${resp.status}`);
   return resp.json() as Promise<T>;
 }
@@ -561,10 +566,38 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(`${API_V1}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: CREDENTIALS,
     body: JSON.stringify(body),
   });
   if (!resp.ok) throw new Error(`API POST ${path} failed with ${resp.status}`);
   return resp.json() as Promise<T>;
+}
+
+// ── 세션 마인드맵 상태 ────────────────────────────────────────────────────────
+
+export type SessionState = {
+  session_id: string;
+  mindmap: {
+    center_news_id: string;
+    expanded_news_ids: string[];
+    query: string;
+  };
+  viewed_news_ids: string[];
+};
+
+/** 현재 세션 상태를 조회한다. 쿠키가 없으면 백엔드가 새로 발급한다. */
+export async function fetchSession(): Promise<SessionState> {
+  return apiGet<SessionState>('/session');
+}
+
+/** 마인드맵에서 노드를 펼친다. 다음 graph 조회에 이 노드의 이웃이 포함된다. */
+export async function expandMindmapNode(newsId: string): Promise<SessionState> {
+  return apiPost<SessionState>('/session/mindmap/expand', { news_id: newsId });
+}
+
+/** 펼친 노드를 접는다. */
+export async function collapseMindmapNode(newsId: string): Promise<SessionState> {
+  return apiPost<SessionState>('/session/mindmap/collapse', { news_id: newsId });
 }
 
 function pickTone(title: string, index: number): NewsCard['thumbnailTone'] {
