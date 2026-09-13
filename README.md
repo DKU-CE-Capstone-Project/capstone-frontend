@@ -36,6 +36,7 @@ npm install
 cd capstone-backend
 python -m venv .venv
 source .venv/bin/activate
+pip install -e ../capstone-news-logic
 pip install -e .
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -188,3 +189,10 @@ npm run preview
 ## 라이선스
 
 본 프로젝트는 단국대학교 캡스톤 디자인 과목 학습 목적으로 작성되었습니다.
+
+## 자동배포
+
+PR과 `main` push에서 GitHub Actions가 `npm ci`와 `npm run build`를 실행합니다.
+`main`의 CI가 성공하면 GCP 서버가 변경을 확인하고 백엔드·뉴스 로직의 정확한 커밋과 함께 배포합니다.
+배포 중 상태 검사 실패 시 이전 이미지로 복구됩니다.
+[자동배포 운영 설명서](https://github.com/DKU-CE-Capstone-Project/capstone-deploy/blob/main/gcp/README.md)
