@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ExternalLink,
@@ -20,6 +20,7 @@ import {
   dynNews,
   fetchAndCacheCluster,
   fetchAndCacheNewsCluster,
+  fetchAndCacheNewsSource,
   fetchRecommendedKeywordLabels,
   findOrResolveClusterByQuery,
   resolveCluster,
@@ -133,34 +134,40 @@ function App() {
       setDetailNewsId(nextCluster.mainNewsId);
       navigate('newsMap');
     } catch {
-      setQuery(term);
-      setCenterNewsId('');
-      setDetailNewsId('');
-      setErrorMsg('뉴스 검색에 실패했습니다. 잠시 후 다시 검색해 주세요.');
+      const fallback = findOrResolveClusterByQuery(term);
+      setActiveClusterId(fallback.id);
+      setCenterNewsId(fallback.mainNewsId);
+      setDetailNewsId(fallback.mainNewsId);
       navigate('newsMap');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const openDetail = (newsId: string) => {
+  const openDetail = async (newsId: string) => {
+    setIsLoading(true);
     setErrorMsg(null);
-    setDetailNewsId(newsId);
-    if (screen !== 'newsDetail') navigate('newsDetail');
+    try {
+      await fetchAndCacheNewsSource(newsId);
+    } catch {
+      setErrorMsg('원문 링크 API 호출 실패 — 기본 뉴스 정보로 표시합니다.');
+    } finally {
+      setDetailNewsId(newsId);
+      navigate('newsDetail');
+      setIsLoading(false);
+    }
   };
 
   const openReport = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const selectedId = screen === 'newsDetail' ? detailNewsId : centerNewsId;
-      const relatedIds = [activeCluster.mainNewsId, ...activeCluster.relatedNewsIds].filter(id => id !== selectedId);
-      await createAndCacheReport(activeCluster.id, selectedId, relatedIds);
-      setCenterNewsId(selectedId);
+      await createAndCacheReport(activeCluster.id, centerNewsId, activeCluster.relatedNewsIds);
       setActiveClusterId(activeCluster.id);
       navigate('report');
     } catch {
-      setErrorMsg('본문 추출 또는 리포트 생성에 실패했습니다. 다시 시도해 주세요.');
+      setErrorMsg('리포트 API 호출 실패 — 기본 리포트로 표시합니다.');
+      navigate('report');
     } finally {
       setIsLoading(false);
     }
@@ -190,13 +197,7 @@ function App() {
           />
         )}
 
-        {screen === 'newsMap' && !centerNewsId && (
-          <section className="view-surface" style={{ display: 'grid', placeContent: 'center', textAlign: 'center', padding: 32 }}>
-            <h2>{errorMsg ? '뉴스 검색 실패' : '조건에 맞는 뉴스가 없습니다'}</h2>
-            <p role="status">{errorMsg || '검색한 20건 중 표시할 네이버 뉴스가 없습니다. 정치·사회 및 분류를 확인하지 못한 기사는 제외됩니다.'}</p>
-          </section>
-        )}
-        {screen === 'newsMap' && centerNewsId && (
+        {screen === 'newsMap' && (
           <NewsMapView
             centerNews={centerNews}
             relatedNews={visibleNews}
@@ -209,7 +210,6 @@ function App() {
             centerNews={centerNews}
             detailNews={resolveNews(detailNewsId)}
             relatedNews={visibleNews}
-            errorMsg={errorMsg}
             onOpenDetail={openDetail}
             onOpenReport={openReport}
           />
@@ -231,7 +231,6 @@ function App() {
             onBack={goBack}
             onSearch={() => navigate('home')}
             onReport={openReport}
-            hasNews={Boolean(screen === 'newsDetail' ? detailNewsId : centerNewsId)}
           />
         )}
       </section>
@@ -416,23 +415,15 @@ function DetailView({
   centerNews,
   detailNews,
   relatedNews,
-  errorMsg,
   onOpenDetail,
   onOpenReport,
 }: {
   centerNews: NewsCard;
   detailNews: NewsCard;
   relatedNews: NewsCard[];
-  errorMsg: string | null;
   onOpenDetail: (newsId: string) => void;
   onOpenReport: () => void;
 }) {
-  const panel = useRef<HTMLElement>(null);
-  useEffect(() => {
-    panel.current?.scrollTo(0, 0);
-    panel.current?.parentElement?.scrollTo(0, 0);
-  }, [detailNews.id]);
-
   return (
     <section className="split-view view-surface">
       <aside className="mini-map">
@@ -443,7 +434,7 @@ function DetailView({
           onOpenDetail={onOpenDetail}
         />
       </aside>
-      <article className="detail-panel" ref={panel} tabIndex={0} aria-label="기사 설명 영역">
+      <article className="detail-panel">
         <div className={`story-hero tone-${detailNews.thumbnailTone}`}>
           <img src={detailNews.imageUrl} alt={`${detailNews.title} 대표 이미지`} />
           <div className="story-hero-overlay" aria-hidden="true" />
@@ -455,9 +446,8 @@ function DetailView({
             <time>{detailNews.publishedAt}</time>
           </div>
           <h2>{detailNews.title}</h2>
-          <h3>기사 설명</h3>
-          <p className="article-body">{detailNews.summary || '제공된 기사 설명이 없습니다.'}</p>
-          {errorMsg && <p role="alert">{errorMsg}</p>}
+          <p className="lead">{detailNews.summary}</p>
+          <p>{detailNews.mockOriginalBody}</p>
           {detailNews.sourceUrl ? (
             <div className="source-link-card">
               <span>원문 링크</span>
@@ -641,14 +631,12 @@ function BottomControls({
   onBack,
   onSearch,
   onReport,
-  hasNews,
 }: {
   screen: Screen;
   canGoBack: boolean;
   onBack: () => void;
   onSearch: () => void;
   onReport: () => void;
-  hasNews: boolean;
 }) {
   return (
     <nav className="bottom-controls" aria-label="화면 컨트롤">
@@ -658,7 +646,7 @@ function BottomControls({
       <button
         type="button"
         onClick={onReport}
-        disabled={!hasNews || screen === 'home' || screen === 'searchResults'}
+        disabled={screen === 'home' || screen === 'searchResults'}
         aria-label="리포트"
       >
         <FileText aria-hidden="true" />
@@ -703,7 +691,7 @@ function getVisibleNews(cluster: IssueCluster, centerNewsId: string): NewsCard[]
     .filter((id) => id !== centerNewsId)
     .map(resolveNews);
 
-  if (cluster.id.startsWith('api-v1-') || candidates.length >= 3) return candidates.slice(0, 3);
+  if (candidates.length >= 3) return candidates.slice(0, 3);
 
   // Fallback: combine static + dynamic news cards
   const allNews = [...staticNewsCards, ...Array.from(dynNews.values())];
