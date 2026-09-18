@@ -728,6 +728,19 @@ button:disabled {
   line-height: 1.7;
 }
 
+.detail-panel .article-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.85;
+}
+
+.detail-panel .body-unavailable,
+.detail-panel [role="alert"] {
+  padding: 12px 16px;
+  background: #fff6df;
+  border-left: 3px solid #b27b12;
+}
+
 .source-link-card {
   display: grid;
   gap: 8px;
