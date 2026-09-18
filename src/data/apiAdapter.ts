@@ -42,7 +42,6 @@ const FALLBACK_IMAGES = [
 ];
 
 type ApiNewsCard = {
-  description?: string;
   news_id: string;
   title: string;
   summary: string;
@@ -50,7 +49,6 @@ type ApiNewsCard = {
   source_name: string;
   published_at: string;
   related_stock_names: string[];
-  source_url?: string;
 };
 
 type ApiSearchResponse = {
@@ -73,8 +71,6 @@ type ApiSourceResponse = {
   published_at: string;
   original_title: string;
   original_body?: string;
-  description?: string;
-  thumbnail_url?: string;
 };
 
 type ApiGraphNode = {
@@ -229,7 +225,7 @@ export async function fetchAndCacheNewsCluster(term: string): Promise<IssueClust
   const params = new URLSearchParams({
     q: trimmed,
     page: '1',
-    size: '20',
+    size: '10',
     sort: 'relevance',
   });
   const [searchData, recommendedKeywords] = await Promise.all([
@@ -296,8 +292,7 @@ export async function fetchAndCacheNewsSource(newsId: string): Promise<NewsCard>
     title: source.original_title || existing.title,
     source: source.source_name || existing.source,
     publishedAt: formatDate(source.published_at) || existing.publishedAt,
-    mockOriginalBody: source.original_body ?? '',
-    imageUrl: source.thumbnail_url || existing.imageUrl,
+    mockOriginalBody: source.original_body || existing.mockOriginalBody,
     sourceUrl: source.source_url || existing.sourceUrl,
   };
   dynNews.set(newsId, updated);
@@ -325,14 +320,14 @@ export async function createAndCacheReport(
     const strategy = await createAndFetchStrategy(created.report_id).catch(() => null);
 
     if (!strategy || hasBackendFallbackText(apiReport, strategy)) {
-      throw new Error('AI report or strategy generation is unavailable');
+      return cacheFrontendMockReport(clusterId, newsId);
     }
 
     const report = mapApiReport(apiReport, clusterId, strategy);
     cacheReportForCluster(clusterId, report);
     return report;
-  } catch (error) {
-    throw error;
+  } catch {
+    return cacheFrontendMockReport(clusterId, newsId);
   }
 }
 
@@ -373,7 +368,7 @@ function cacheSearchAsCluster({
   const cluster: IssueCluster = {
     id: clusterId,
     query,
-    mainNewsId: newsIds[0] ?? '',
+    mainNewsId: newsIds[0] ?? staticNewsCards[0].id,
     relatedNewsIds: newsIds.slice(1),
     recommendedKeywords: keywords.length > 0 ? keywords : staticClusters[0].recommendedKeywords,
     reportId: `${clusterId}-report-placeholder`,
@@ -417,11 +412,45 @@ function mapApiReport(
   };
 }
 
+function cacheFrontendMockReport(clusterId: string, newsId: string): Report {
+  const report = buildFrontendMockReport(clusterId, newsId);
+  cacheReportForCluster(clusterId, report);
+  return report;
+}
+
 function cacheReportForCluster(clusterId: string, report: Report) {
   dynReports.set(report.id, report);
 
   const cluster = resolveCluster(clusterId);
   dynClusters.set(clusterId, { ...cluster, reportId: report.id });
+}
+
+function buildFrontendMockReport(clusterId: string, newsId: string): Report {
+  const cluster = resolveCluster(clusterId);
+  const centerNews = resolveNews(newsId);
+  const haystack = [
+    cluster.query,
+    centerNews.title,
+    centerNews.summary,
+    ...centerNews.keywords,
+  ].join(' ').toLowerCase();
+  const template =
+    /ai|nvidia|엔비디아|삼성|반도체|hbm|gpu|서버/.test(haystack)
+      ? staticReports.find((report) => report.id === 'report-ai') ?? staticReports[0]
+      : staticReports.find((report) => report.id === 'report-oil') ?? staticReports[0];
+
+  return {
+    ...template,
+    id: `${clusterId}-frontend-mock-report`,
+    clusterId,
+    title: `${centerNews.title.slice(0, 30)} — 투자 분석 리포트`,
+    stockImpacts: template.stockImpacts.map((stock) => ({ ...stock })),
+    riskFactors: [...template.riskFactors],
+    strategySummary: {
+      ...template.strategySummary,
+      watchlist: [...template.strategySummary.watchlist],
+    },
+  };
 }
 
 function hasBackendFallbackText(
@@ -452,9 +481,9 @@ function apiCardToNewsCard(card: ApiNewsCard, query: string, index: number): New
     title: card.title,
     source: card.source_name,
     publishedAt: formatDate(card.published_at),
-    summary: card.description ?? card.summary,
-    mockOriginalBody: '',
-    sourceUrl: card.source_url,
+    summary: card.summary,
+    mockOriginalBody: card.summary,
+    sourceUrl: undefined,
     thumbnailTone: pickTone(card.title, index),
     imageUrl: card.thumbnail_url || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
     keywords: unique([query, ...card.related_stock_names]).slice(0, 4),
@@ -471,7 +500,7 @@ function graphNodeToNewsCard(node: ApiGraphNode, query: string, index: number): 
     source: existing?.source ?? 'News API',
     publishedAt: existing?.publishedAt ?? '',
     summary: node.summary,
-    mockOriginalBody: existing?.mockOriginalBody ?? '',
+    mockOriginalBody: existing?.mockOriginalBody ?? node.summary,
     sourceUrl: existing?.sourceUrl,
     thumbnailTone: existing?.thumbnailTone ?? pickTone(node.title, index),
     imageUrl: existing?.imageUrl ?? FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
@@ -489,7 +518,7 @@ function relatedItemToNewsCard(item: ApiRelatedNewsItem, query: string, index: n
     source: existing?.source ?? 'Related News',
     publishedAt: existing?.publishedAt ?? '',
     summary: item.summary,
-    mockOriginalBody: existing?.mockOriginalBody ?? '',
+    mockOriginalBody: existing?.mockOriginalBody ?? item.summary,
     sourceUrl: existing?.sourceUrl,
     thumbnailTone: existing?.thumbnailTone ?? pickTone(item.title, index),
     imageUrl: item.thumbnail_url || existing?.imageUrl || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
