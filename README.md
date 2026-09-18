@@ -4,6 +4,19 @@
 
 React, TypeScript, Vite 기반으로 구현되어 있으며, 백엔드의 9주차 API 명세서 기준 `/api/v1` 엔드포인트와 연결됩니다.
 
+## 2026-09-18 뉴스 경로 변경
+
+**GDELT의 반복적인 HTTP 429 오류 때문에 기본 공급원을 NCP NAVER API HUB로 변경했다. 해외 뉴스는 검토 예정이다.**
+검색은 20건을 요청하고, NAVER 뉴스 URL이 있으며 정치·사회 제외 조건을 통과한 결과만 표시한다. 필터 결과가 적어도 샘플 기사로 채우지 않는다. 검색 실패와 결과 없음은 별도로 안내한다.
+
+- 검색·마인드맵: NAVER description과 페이지 OG 이미지를 사용한다. Diffbot 호출 없음.
+- 뉴스 상세: 검색 응답에 저장된 **description만 표시**한다. 본문 API를 추가 호출하지 않으며, 기사를 바꾸면 스크롤을 초기화한다.
+- 리포트 보기: **상세에서 선택한 기사**의 ID로 리포트를 요청한다. 이때 백엔드가 NAVER URL에서 Diffbot으로 본문 1건을 추출한다.
+- QR 코드 이미지는 백엔드에서 제외한다. 원문 링크는 별도 영역에 제공한다.
+- 본문 추출·리포트·전략 실패와 AI fallback 응답은 오류로 표시하며 샘플 리포트로 바꾸지 않는다.
+
+API 비밀키는 백엔드에만 둔다. Gemini 3.5 Flash-Lite / Flex 설정 역시 백엔드의 책임이다. Flex 요청은 오래 걸릴 수 있어 Nginx의 API 대기 시간을 1500초로 맞췄다. MongoDB 실제 준비 상태는 `/ready`로 프록시한다.
+
 ## 기술 스택
 
 - React 19
@@ -23,7 +36,7 @@ cd capstone-frontend
 ### 2. 의존성 설치
 
 ```bash
-npm install
+npm ci
 ```
 
 ### 3. 백엔드 실행
@@ -101,8 +114,8 @@ VITE_API_BASE=http://127.0.0.1:8000
    - 연관 뉴스 이미지는 `related.thumbnail_url` → 기존 캐시 이미지 → 프론트 fallback 이미지 순서로 결정합니다.
 
 4. 뉴스 상세
-   - `GET /api/v1/news/{news_id}/source`를 호출해 원문 출처 정보를 가져옵니다.
-   - 백엔드가 `original_body`를 반환하면 상세 본문에 저장해 기존 mock 본문 대신 표시합니다.
+   - 검색 시 받은 `description`과 `source_url`을 바로 표시합니다.
+   - 상세 진입에서는 전체 본문을 요청하거나 Diffbot을 호출하지 않습니다.
    - 원문 링크는 본문과 분리된 `원문 링크` 영역에 표시됩니다.
    - 상세 화면의 대표 이미지는 검색/연관 뉴스 응답에서 캐시한 백엔드 이미지 URL을 그대로 사용합니다.
 
@@ -110,7 +123,7 @@ VITE_API_BASE=http://127.0.0.1:8000
    - `POST /api/v1/reports`로 리포트를 생성합니다.
    - `GET /api/v1/reports/{report_id}`로 리포트 상세를 조회합니다.
    - `POST /api/v1/strategies`, `GET /api/v1/strategies/{strategy_id}`로 투자 전략 정보를 가져옵니다.
-   - 리포트/전략 API 호출이 실패하거나 백엔드가 `(AI 분석 준비 중)` fallback 응답을 반환하면 프론트의 mock 리포트로 대체합니다.
+   - 리포트/전략 API 호출 실패 또는 `(AI 분석 준비 중)` 응답은 오류로 표시합니다.
 
 ## 화면 컨트롤
 
@@ -138,14 +151,7 @@ src/
 
 프론트의 fallback mock 데이터는 `src/data/mockData.ts`에 있습니다.
 
-현재 앱은 백엔드 API 호출을 우선 사용합니다. 단, 다음 상황에서는 프론트 mock 데이터가 화면에 보일 수 있습니다.
-
-- 백엔드 서버가 실행 중이 아닌 경우
-- 백엔드 CORS 설정에 현재 프론트 포트가 빠진 경우
-- API 요청이 실패한 경우
-- 아직 API 응답을 받기 전 초기 렌더링 상태
-- 리포트/전략 API가 백엔드 fallback 문구를 반환한 경우
-- 백엔드가 `thumbnail_url`을 비워 반환한 경우 해당 카드 이미지만 프론트 fallback 이미지로 대체됩니다.
+추천 키워드·초기 프로토타입 화면·이미지가 없는 카드에는 로컬 기본 데이터가 남아 있습니다. 실제 뉴스 검색 실패/빈 결과와 리포트 실패에는 샘플 뉴스나 샘플 리포트를 대신 표시하지 않습니다.
 
 백엔드 mock 뉴스 JSON은 프론트 저장소가 아니라 백엔드 저장소의 `fixtures/news_mock.json`에 있습니다.
 
@@ -157,7 +163,14 @@ src/
 npm run build
 ```
 
-빌드 결과물은 `dist/`에 생성됩니다.
+빌드 결과물은 `dist/`에 생성됩니다. 서버 배포는 같은 도메인의 API를 사용하므로 다음처럼 빌드합니다.
+
+```bash
+VITE_API_BASE='' npm run build
+docker build --platform linux/amd64 --build-arg VITE_API_BASE= -t econmind-frontend:release-20260918 .
+```
+
+2026-09-18 로컬 타입 검사·Vite 빌드와 amd64 Docker 빌드를 확인했습니다. 배포 결과는 [릴리스 기록](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-news-release-2026-09-18.md)을 참고합니다.
 
 ## 빌드 결과 미리보기
 
