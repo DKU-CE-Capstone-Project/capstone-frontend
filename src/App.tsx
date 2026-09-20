@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft,
   ExternalLink,
@@ -16,6 +17,7 @@ import {
   type Report,
 } from './data/mockData';
 import {
+  buildFallbackCluster,
   createAndCacheReport,
   dynNews,
   fetchAndCacheCluster,
@@ -27,6 +29,21 @@ import {
   resolveNews,
   resolveReport,
 } from './data/apiAdapter';
+import { useTheme } from './design/useTheme';
+import { MAX_KEYWORD_NODES, MAX_RELATED_NODES } from './layout/mapLayout';
+import {
+  easeOut,
+  fadeVariants,
+  riseVariants,
+  screenVariants,
+  springSnappy,
+  springSoft,
+  staggerContainer,
+  useMotionSafe,
+} from './motion/presets';
+import { KeywordMap } from './components/KeywordMap';
+import { NewsMapCanvas } from './components/NewsMapCanvas';
+import { EmptyState, LoadingOverlay, MapSkeleton, SmartImage, ThemeToggle, Toast } from './components/ui';
 
 type Screen = 'home' | 'searchResults' | 'newsMap' | 'newsDetail' | 'report';
 
@@ -41,13 +58,15 @@ const viewNames: Record<Screen, string> = {
 };
 
 function App() {
+  const { isDark, toggle: toggleTheme } = useTheme();
+
   const [screen, setScreen] = useState<Screen>('home');
   const [history, setHistory] = useState<Screen[]>([]);
   const [query, setQuery] = useState('');
   const [activeClusterId, setActiveClusterId] = useState(clusters[0].id);
   const [centerNewsId, setCenterNewsId] = useState(clusters[0].mainNewsId);
   const [detailNewsId, setDetailNewsId] = useState(clusters[0].mainNewsId);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [recommendedKeywords, setRecommendedKeywords] = useState(
     clusters[0].recommendedKeywords.slice(0, 8),
@@ -82,16 +101,19 @@ function App() {
     setScreen(nextScreen);
   };
 
+  /**
+   * 이전 구현은 setHistory 업데이터 안에서 setScreen을 호출했다.
+   * 업데이터는 순수해야 하고 StrictMode에서 두 번 실행되므로 상태 갱신을 분리한다.
+   */
   const goBack = () => {
-    setHistory((prev) => {
-      const next = [...prev];
-      const prevScreen = next.pop();
-      setScreen(prevScreen ?? 'home');
-      return next;
-    });
+    const previous = history[history.length - 1] ?? 'home';
+    setHistory((prev) => prev.slice(0, -1));
+    setScreen(previous);
   };
 
-  /** Build the keyword-only map first; news search is deferred until a keyword node is opened. */
+  const dismissError = useCallback(() => setErrorMsg(null), []);
+
+  /** 키워드만 있는 맵을 먼저 만든다. 뉴스 검색은 키워드 노드를 열 때까지 미룬다. */
   const loadCluster = async (term: string): Promise<IssueCluster> => {
     const trimmed = term.trim();
     if (!trimmed) return findOrResolveClusterByQuery('');
@@ -100,7 +122,7 @@ function App() {
 
   const openCluster = async (term: string) => {
     const trimmed = term.trim();
-    setIsLoading(true);
+    setLoadingLabel('연관 키워드를 찾는 중…');
     setErrorMsg(null);
     try {
       const nextCluster = await loadCluster(trimmed);
@@ -109,9 +131,9 @@ function App() {
       setCenterNewsId(nextCluster.mainNewsId);
       setDetailNewsId(nextCluster.mainNewsId);
       navigate('searchResults');
-    } catch (e) {
-      // API failed — fall back to static mock
-      const fallback = findOrResolveClusterByQuery(trimmed);
+    } catch {
+      // API 실패 — 검색어는 중심에 남기고 키워드만 로컬 데이터로 채운다
+      const fallback = buildFallbackCluster(trimmed);
       setQuery(trimmed || fallback.query);
       setActiveClusterId(fallback.id);
       setCenterNewsId(fallback.mainNewsId);
@@ -119,12 +141,12 @@ function App() {
       setErrorMsg('API 호출 실패 — 기본 데이터로 표시합니다.');
       navigate('searchResults');
     } finally {
-      setIsLoading(false);
+      setLoadingLabel(null);
     }
   };
 
   const openKeywordNewsMap = async (term: string) => {
-    setIsLoading(true);
+    setLoadingLabel('관련 뉴스를 모으는 중…');
     setErrorMsg(null);
     try {
       const nextCluster = await fetchAndCacheNewsCluster(term);
@@ -134,18 +156,20 @@ function App() {
       setDetailNewsId(nextCluster.mainNewsId);
       navigate('newsMap');
     } catch {
-      const fallback = findOrResolveClusterByQuery(term);
+      const fallback = buildFallbackCluster(term);
+      setQuery(term || fallback.query);
       setActiveClusterId(fallback.id);
       setCenterNewsId(fallback.mainNewsId);
       setDetailNewsId(fallback.mainNewsId);
+      setErrorMsg('뉴스 검색 API 호출 실패 — 기본 데이터로 표시합니다.');
       navigate('newsMap');
     } finally {
-      setIsLoading(false);
+      setLoadingLabel(null);
     }
   };
 
   const openDetail = async (newsId: string) => {
-    setIsLoading(true);
+    setLoadingLabel('원문을 불러오는 중…');
     setErrorMsg(null);
     try {
       await fetchAndCacheNewsSource(newsId);
@@ -154,12 +178,12 @@ function App() {
     } finally {
       setDetailNewsId(newsId);
       navigate('newsDetail');
-      setIsLoading(false);
+      setLoadingLabel(null);
     }
   };
 
   const openReport = async () => {
-    setIsLoading(true);
+    setLoadingLabel('리포트를 생성하는 중…');
     setErrorMsg(null);
     try {
       await createAndCacheReport(activeCluster.id, centerNewsId, activeCluster.relatedNewsIds);
@@ -169,60 +193,78 @@ function App() {
       setErrorMsg('리포트 API 호출 실패 — 기본 리포트로 표시합니다.');
       navigate('report');
     } finally {
-      setIsLoading(false);
+      setLoadingLabel(null);
     }
   };
 
+  /** 연관 노드를 맵 중심으로 끌어온다. 주변 노드는 레이아웃 애니메이션으로 재배치된다. */
+  const focusNews = (newsId: string) => setCenterNewsId(newsId);
+
   return (
     <main className="app-shell">
-      {isLoading && <LoadingOverlay />}
       <section className={`prototype-frame screen-${screen}`} aria-label="뉴스맵 클릭모형">
-        <HeaderBar screen={screen} />
+        <HeaderBar screen={screen} isDark={isDark} onToggleTheme={toggleTheme} />
 
-        {screen === 'home' && (
-          <HomeView
-            query={query}
-            setQuery={setQuery}
-            keywords={recommendedKeywords}
-            onSearch={() => openCluster(query)}
-            onKeyword={openCluster}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {screen === 'home' && (
+            <ScreenSurface key="home" className="home-view">
+              <HomeView
+                query={query}
+                setQuery={setQuery}
+                keywords={recommendedKeywords}
+                onSearch={() => openCluster(query)}
+                onKeyword={openCluster}
+              />
+            </ScreenSurface>
+          )}
 
-        {screen === 'searchResults' && (
-          <SearchResultsView
-            cluster={activeCluster}
-            errorMsg={errorMsg}
-            onOpenKeywordNewsMap={openKeywordNewsMap}
-          />
-        )}
+          {screen === 'searchResults' && (
+            <ScreenSurface key="searchResults" className="results-view">
+              <SearchResultsView
+                cluster={activeCluster}
+                busy={loadingLabel !== null}
+                onOpenKeywordNewsMap={openKeywordNewsMap}
+              />
+            </ScreenSurface>
+          )}
 
-        {screen === 'newsMap' && (
-          <NewsMapView
-            centerNews={centerNews}
-            relatedNews={visibleNews}
-            onOpenDetail={openDetail}
-          />
-        )}
+          {screen === 'newsMap' && (
+            <ScreenSurface key="newsMap" className="map-view">
+              <NewsMapView
+                centerNews={centerNews}
+                relatedNews={visibleNews}
+                busy={loadingLabel !== null}
+                onOpenDetail={openDetail}
+                onFocusNews={focusNews}
+              />
+            </ScreenSurface>
+          )}
 
-        {screen === 'newsDetail' && (
-          <DetailView
-            centerNews={centerNews}
-            detailNews={resolveNews(detailNewsId)}
-            relatedNews={visibleNews}
-            onOpenDetail={openDetail}
-            onOpenReport={openReport}
-          />
-        )}
+          {screen === 'newsDetail' && (
+            <ScreenSurface key="newsDetail" className="split-view">
+              <DetailView
+                centerNews={centerNews}
+                detailNews={resolveNews(detailNewsId)}
+                relatedNews={visibleNews}
+                onOpenDetail={openDetail}
+                onFocusNews={focusNews}
+                onOpenReport={openReport}
+              />
+            </ScreenSurface>
+          )}
 
-        {screen === 'report' && (
-          <ReportView
-            centerNews={centerNews}
-            relatedNews={visibleNews}
-            report={report}
-            onOpenDetail={openDetail}
-          />
-        )}
+          {screen === 'report' && (
+            <ScreenSurface key="report" className="split-view report-view">
+              <ReportView
+                centerNews={centerNews}
+                relatedNews={visibleNews}
+                report={report}
+                onOpenDetail={openDetail}
+                onFocusNews={focusNews}
+              />
+            </ScreenSurface>
+          )}
+        </AnimatePresence>
 
         {screen !== 'home' && (
           <BottomControls
@@ -233,56 +275,66 @@ function App() {
             onReport={openReport}
           />
         )}
+
+        <Toast message={errorMsg} onDismiss={dismissError} />
+
+        <AnimatePresence>
+          {loadingLabel && <LoadingOverlay label={loadingLabel} />}
+        </AnimatePresence>
       </section>
     </main>
   );
 }
 
-// ── Loading overlay ──────────────────────────────────────────────────────────
-function LoadingOverlay() {
+// ── 화면 래퍼 ────────────────────────────────────────────────────────
+/**
+ * 5개 화면이 모두 position:absolute로 겹쳐 있어 cross-fade 전환에 유리하다.
+ * AnimatePresence를 sync 모드로 두어 layoutId 공유 요소(검색창)가 이어지게 한다.
+ */
+function ScreenSurface({ className, children }: { className: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(239,239,239,0.72)',
-        backdropFilter: 'blur(4px)',
-      }}
-      aria-live="polite"
-      aria-label="뉴스 분석 중"
+    <motion.section
+      className={`view-surface ${className}`}
+      variants={screenVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
     >
-      <div
-        style={{
-          padding: '20px 32px',
-          borderRadius: 12,
-          background: '#fff',
-          border: '1px solid #ddd',
-          fontWeight: 700,
-          color: '#3c4149',
-          fontSize: 15,
-        }}
-      >
-        🔍 뉴스 분석 중…
-      </div>
-    </div>
+      {children}
+    </motion.section>
   );
 }
 
-// ── HeaderBar ────────────────────────────────────────────────────────────────
-function HeaderBar({ screen }: { screen: Screen }) {
+// ── HeaderBar ────────────────────────────────────────────────────────
+function HeaderBar({
+  screen,
+  isDark,
+  onToggleTheme,
+}: {
+  screen: Screen;
+  isDark: boolean;
+  onToggleTheme: () => void;
+}) {
   return (
     <header className="header-bar">
-      <div className="header-spacer" aria-hidden="true" />
-      <div className="view-chip">{viewNames[screen]}</div>
+      <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={screen}
+          className="view-chip"
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 6 }}
+          transition={easeOut}
+        >
+          {viewNames[screen]}
+        </motion.div>
+      </AnimatePresence>
     </header>
   );
 }
 
-// ── HomeView ─────────────────────────────────────────────────────────────────
+// ── HomeView ─────────────────────────────────────────────────────────
 function HomeView({
   query,
   setQuery,
@@ -302,9 +354,18 @@ function HomeView({
   };
 
   return (
-    <section className="home-view view-surface">
-      <div className="logo-mark">{PROJECT_TITLE}</div>
-      <form className="search-form" onSubmit={submit}>
+    <>
+      <motion.h1 className="logo-mark" variants={riseVariants}>
+        {PROJECT_TITLE}
+      </motion.h1>
+
+      {/* layoutId로 검색 결과 화면의 하단 검색 스트립과 이어진다 */}
+      <motion.form
+        layoutId="search-surface"
+        className="search-form"
+        onSubmit={submit}
+        transition={springSoft}
+      >
         <Search aria-hidden="true" size={20} />
         <input
           value={query}
@@ -312,215 +373,280 @@ function HomeView({
           placeholder="뉴스 키워드 검색"
           aria-label="뉴스 키워드 검색"
         />
-        <button type="submit">검색</button>
-      </form>
-      <div className="keyword-row" aria-label="추천 키워드">
+        <motion.button type="submit" whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+          검색
+        </motion.button>
+      </motion.form>
+
+      <motion.div
+        className="keyword-row"
+        variants={staggerContainer(0.045, 0.18)}
+        initial="enter"
+        animate="center"
+        aria-label="추천 키워드"
+      >
         {keywords.map((kw) => (
-          <button key={kw} type="button" onClick={() => onKeyword(kw)}>
+          <motion.button
+            key={kw}
+            type="button"
+            variants={riseVariants}
+            whileHover={{ scale: 1.05, y: -2 }}
+            whileTap={{ scale: 0.96 }}
+            transition={springSnappy}
+            onClick={() => onKeyword(kw)}
+          >
             {kw}
-          </button>
+          </motion.button>
         ))}
-      </div>
-      <div className="home-footer">
+      </motion.div>
+
+      <motion.div className="home-footer" variants={fadeVariants}>
         <span>추천 이슈</span>
         <strong>중동 전황 · AI 서버 · 환율</strong>
-      </div>
-    </section>
+      </motion.div>
+    </>
   );
 }
 
-// ── SearchResultsView ────────────────────────────────────────────────────────
+// ── SearchResultsView ────────────────────────────────────────────────
 function SearchResultsView({
   cluster,
-  errorMsg,
+  busy,
   onOpenKeywordNewsMap,
 }: {
   cluster: IssueCluster;
-  errorMsg: string | null;
+  busy: boolean;
   onOpenKeywordNewsMap: (kw: string) => void;
 }) {
-  const keywordNodes = getSearchKeywordNodes(cluster);
+  const keywords = getSearchKeywordNodes(cluster);
 
   return (
-    <section className="results-view view-surface">
-      {errorMsg && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 72,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#fff3cd',
-            border: '1px solid #ffc107',
-            borderRadius: 8,
-            padding: '6px 14px',
-            fontSize: 12,
-            color: '#6b5a00',
-            zIndex: 10,
-          }}
-        >
-          {errorMsg}
+    <>
+      {busy ? (
+        <div className="orbit-field">
+          <MapSkeleton />
         </div>
+      ) : keywords.length === 0 ? (
+        <div className="orbit-field">
+          <EmptyState
+            title="연관 키워드를 찾지 못했습니다"
+            hint="다른 검색어로 다시 시도해 보세요."
+          />
+        </div>
+      ) : (
+        <KeywordMap keywords={keywords} onSelect={onOpenKeywordNewsMap} />
       )}
-      <div className="orbit-field">
-        <div className="orbit orbit-large" />
-        <div className="orbit orbit-small" />
-        {keywordNodes.map((node, i) => (
-          <button
-            key={`${node.keyword}-${i}`}
-            type="button"
-            className={`keyword-map-node keyword-map-node-${i}`}
-            onClick={() => onOpenKeywordNewsMap(node.keyword)}
-            aria-label={`${node.keyword} 관련 뉴스 보기`}
-          >
-            {node.keyword}
-          </button>
-        ))}
-      </div>
-      <div className="result-search-strip">
+
+      <motion.div layoutId="search-surface" className="result-search-strip" transition={springSoft}>
         <Search size={16} aria-hidden="true" />
         <span>{cluster.query}</span>
-        <button type="button" onClick={() => onOpenKeywordNewsMap(cluster.query)}>
+        <motion.button
+          type="button"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => onOpenKeywordNewsMap(cluster.query)}
+        >
           열기
-        </button>
-      </div>
-    </section>
+        </motion.button>
+      </motion.div>
+    </>
   );
 }
 
-// ── NewsMapView ───────────────────────────────────────────────────────────────
+// ── NewsMapView ──────────────────────────────────────────────────────
 function NewsMapView({
   centerNews,
   relatedNews,
+  busy,
   onOpenDetail,
+  onFocusNews,
 }: {
   centerNews: NewsCard;
   relatedNews: NewsCard[];
+  busy: boolean;
   onOpenDetail: (newsId: string) => void;
+  onFocusNews: (newsId: string) => void;
 }) {
   return (
-    <section className="map-view view-surface">
-      <NewsMapCanvas
-        centerNews={centerNews}
-        relatedNews={relatedNews}
-        onOpenDetail={onOpenDetail}
-      />
+    <>
+      {busy ? (
+        <div className="news-map-field">
+          <MapSkeleton />
+        </div>
+      ) : (
+        <NewsMapCanvas
+          centerNews={centerNews}
+          relatedNews={relatedNews}
+          onOpenDetail={onOpenDetail}
+          onFocusNews={onFocusNews}
+        />
+      )}
       <PremiumPreview />
-    </section>
+    </>
   );
 }
 
-// ── DetailView ────────────────────────────────────────────────────────────────
+// ── DetailView ───────────────────────────────────────────────────────
 function DetailView({
   centerNews,
   detailNews,
   relatedNews,
   onOpenDetail,
+  onFocusNews,
   onOpenReport,
 }: {
   centerNews: NewsCard;
   detailNews: NewsCard;
   relatedNews: NewsCard[];
   onOpenDetail: (newsId: string) => void;
+  onFocusNews: (newsId: string) => void;
   onOpenReport: () => void;
 }) {
   return (
-    <section className="split-view view-surface">
+    <>
       <aside className="mini-map">
         <NewsMapCanvas
           centerNews={centerNews}
           relatedNews={relatedNews}
           compact
           onOpenDetail={onOpenDetail}
+          onFocusNews={onFocusNews}
         />
       </aside>
-      <article className="detail-panel">
-        <div className={`story-hero tone-${detailNews.thumbnailTone}`}>
-          <img src={detailNews.imageUrl} alt={`${detailNews.title} 대표 이미지`} />
+
+      <motion.article
+        className="detail-panel"
+        key={detailNews.id}
+        variants={staggerContainer(0.05)}
+        initial="enter"
+        animate="center"
+      >
+        <motion.div className={`story-hero tone-${detailNews.thumbnailTone}`} variants={fadeVariants}>
+          <SmartImage src={detailNews.imageUrl} alt="" eager />
           <div className="story-hero-overlay" aria-hidden="true" />
           <Newspaper size={40} aria-hidden="true" />
-        </div>
+        </motion.div>
+
         <div className="panel-content">
-          <div className="source-line">
+          <motion.div className="source-line" variants={riseVariants}>
             <span>{detailNews.source}</span>
             <time>{detailNews.publishedAt}</time>
-          </div>
-          <h2>{detailNews.title}</h2>
-          <p className="lead">{detailNews.summary}</p>
-          <p>{detailNews.mockOriginalBody}</p>
+          </motion.div>
+
+          <motion.h2 variants={riseVariants}>{detailNews.title}</motion.h2>
+          <motion.p className="lead" variants={riseVariants}>
+            {detailNews.summary}
+          </motion.p>
+          <motion.p variants={riseVariants}>{detailNews.mockOriginalBody}</motion.p>
+
           {detailNews.sourceUrl ? (
-            <div className="source-link-card">
+            <motion.div className="source-link-card" variants={riseVariants}>
               <span>원문 링크</span>
               <a href={detailNews.sourceUrl} target="_blank" rel="noreferrer">
                 {detailNews.sourceUrl}
                 <ExternalLink size={16} aria-hidden="true" />
               </a>
-            </div>
+            </motion.div>
           ) : null}
-          <div className="tag-list">
+
+          <motion.div className="tag-list" variants={riseVariants}>
             {detailNews.keywords.map((kw) => (
               <span key={kw}>{kw}</span>
             ))}
-          </div>
-          <button type="button" className="primary-action" onClick={onOpenReport}>
+          </motion.div>
+
+          <motion.button
+            type="button"
+            className="primary-action"
+            variants={riseVariants}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            transition={springSnappy}
+            onClick={onOpenReport}
+          >
             <FileText size={18} aria-hidden="true" />
             리포트 보기
-          </button>
+          </motion.button>
         </div>
-      </article>
-    </section>
+      </motion.article>
+    </>
   );
 }
 
-// ── ReportView ────────────────────────────────────────────────────────────────
+// ── ReportView ───────────────────────────────────────────────────────
 function ReportView({
   centerNews,
   relatedNews,
   report,
   onOpenDetail,
+  onFocusNews,
 }: {
   centerNews: NewsCard;
   relatedNews: NewsCard[];
   report: Report;
   onOpenDetail: (newsId: string) => void;
+  onFocusNews: (newsId: string) => void;
 }) {
   return (
-    <section className="split-view report-view view-surface">
+    <>
       <aside className="mini-map report-map">
         <NewsMapCanvas
           centerNews={centerNews}
           relatedNews={relatedNews}
           compact
           onOpenDetail={onOpenDetail}
+          onFocusNews={onFocusNews}
         />
       </aside>
-      <article className="report-panel">
+
+      <motion.article
+        className="report-panel"
+        key={report.id}
+        variants={staggerContainer(0.06)}
+        initial="enter"
+        animate="center"
+      >
         <div className="panel-content">
-          <div className="source-line">
+          <motion.div className="source-line" variants={riseVariants}>
             <span>AI Report</span>
             <time>실시간 뉴스 기반 분석</time>
-          </div>
-          <h2>{report.title}</h2>
-          <section className="report-block">
+          </motion.div>
+
+          <motion.h2 variants={riseVariants}>{report.title}</motion.h2>
+
+          <motion.section className="report-block" variants={riseVariants}>
             <h3>사건 요약</h3>
             <p>{report.eventSummary}</p>
-          </section>
-          <section className="report-block">
+          </motion.section>
+
+          <motion.section className="report-block" variants={riseVariants}>
             <h3>시장 영향</h3>
             <p>{report.marketImpact}</p>
-          </section>
+          </motion.section>
+
           {report.stockImpacts.length > 0 && (
-            <section className="impact-grid" aria-label="종목 영향">
+            <motion.section
+              className="impact-grid"
+              variants={staggerContainer(0.07)}
+              aria-label="종목 영향"
+            >
               {report.stockImpacts.map((stock) => (
-                <article key={stock.symbol} className={`impact-card ${stock.direction}`}>
+                <motion.article
+                  key={stock.symbol}
+                  className={`impact-card ${stock.direction}`}
+                  variants={riseVariants}
+                  whileHover={{ y: -3 }}
+                  transition={springSnappy}
+                >
                   <strong>{stock.name}</strong>
                   <span>{stock.symbol}</span>
                   <p>{stock.impact}</p>
-                </article>
+                </motion.article>
               ))}
-            </section>
+            </motion.section>
           )}
-          <section className="chart-block">
+
+          <motion.section className="chart-block" variants={riseVariants}>
             <MiniChart />
             <div className="strategy-box">
               <LineChart size={22} aria-hidden="true" />
@@ -529,102 +655,62 @@ function ReportView({
                 <p>{report.strategySummary.rationale}</p>
               </div>
             </div>
-          </section>
-          <section className="report-block">
+          </motion.section>
+
+          {report.strategySummary.watchlist.length > 0 && (
+            <motion.section className="report-block" variants={riseVariants}>
+              <h3>관심 종목</h3>
+              <div className="tag-list">
+                {report.strategySummary.watchlist.map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+              </div>
+            </motion.section>
+          )}
+
+          <motion.section className="report-block" variants={riseVariants}>
             <h3>리스크 요인</h3>
             <div className="tag-list">
               {report.riskFactors.map((risk) => (
                 <span key={risk}>{risk}</span>
               ))}
             </div>
-          </section>
-          <PremiumPreview dense />
+            {report.strategySummary.riskWarning && (
+              <p className="risk-warning">{report.strategySummary.riskWarning}</p>
+            )}
+          </motion.section>
+
+          <motion.div variants={riseVariants}>
+            <PremiumPreview dense />
+          </motion.div>
         </div>
-      </article>
-    </section>
+      </motion.article>
+    </>
   );
 }
 
-// ── NewsMapCanvas ─────────────────────────────────────────────────────────────
-function NewsMapCanvas({
-  centerNews,
-  relatedNews,
-  compact = false,
-  onOpenDetail,
-}: {
-  centerNews: NewsCard;
-  relatedNews: NewsCard[];
-  compact?: boolean;
-  onOpenDetail: (newsId: string) => void;
-}) {
-  return (
-    <div className={`news-map-canvas${compact ? ' compact' : ''}`}>
-      <svg className="connection-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <path d="M50 51 C42 55, 35 63, 27 71" />
-        <path d="M57 43 C63 34, 69 26, 76 21" />
-        <path d="M57 58 C64 66, 70 72, 76 79" />
-      </svg>
-      <NewsNode news={centerNews} variant="center" onOpenDetail={onOpenDetail} />
-      {relatedNews.map((news, i) => (
-        <NewsNode
-          key={news.id}
-          news={news}
-          variant={`related related-${i}` as const}
-          onOpenDetail={onOpenDetail}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ── NewsNode ──────────────────────────────────────────────────────────────────
-function NewsNode({
-  news,
-  variant,
-  onOpenDetail,
-}: {
-  news: NewsCard;
-  variant: 'center' | `related related-${number}`;
-  onOpenDetail: (newsId: string) => void;
-}) {
-  return (
-    <article
-      className={`news-node ${variant} tone-${news.thumbnailTone}`}
-      aria-label={`${news.title} 뉴스 노드`}
-    >
-      <img className="node-image" src={news.imageUrl} alt={`${news.title} 대표 이미지`} />
-      <div className="node-copy">
-        <strong>{news.title}</strong>
-        <small>{news.source}</small>
-      </div>
-      <button
-        type="button"
-        className="detail-link"
-        onClick={() => onOpenDetail(news.id)}
-        aria-label={`${news.title} 상세 보기`}
-      >
-        상세
-      </button>
-    </article>
-  );
-}
-
-// ── PremiumPreview ────────────────────────────────────────────────────────────
+// ── PremiumPreview ───────────────────────────────────────────────────
 function PremiumPreview({ dense = false }: { dense?: boolean }) {
   return (
-    <aside className={`premium-preview${dense ? ' dense' : ''}`} aria-label="유료 기능 프리뷰">
-      <div>
-        <Lock size={16} aria-hidden="true" />
+    <motion.aside
+      className={`premium-preview${dense ? ' dense' : ''}`}
+      initial={{ opacity: 0, x: dense ? 0 : 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ ...springSoft, delay: 0.3 }}
+      aria-label="유료 기능 프리뷰"
+    >
+      <div className="premium-header">
+        <Lock size={14} aria-hidden="true" />
         <strong>유료 프리뷰</strong>
       </div>
       <button type="button" disabled>뉴스 선택/제외</button>
       <button type="button" disabled>연관도 상세</button>
       <button type="button" disabled>심화 리포트</button>
-    </aside>
+    </motion.aside>
   );
 }
 
-// ── BottomControls ────────────────────────────────────────────────────────────
+// ── BottomControls ───────────────────────────────────────────────────
 function BottomControls({
   screen,
   canGoBack,
@@ -638,51 +724,91 @@ function BottomControls({
   onSearch: () => void;
   onReport: () => void;
 }) {
+  const reportDisabled = screen === 'home' || screen === 'searchResults';
+
   return (
-    <nav className="bottom-controls" aria-label="화면 컨트롤">
-      <button type="button" onClick={onBack} disabled={!canGoBack} aria-label="뒤로가기">
+    <motion.nav
+      className="bottom-controls"
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ ...springSoft, delay: 0.12 }}
+      aria-label="화면 컨트롤"
+    >
+      <NavButton onClick={onBack} disabled={!canGoBack} label="뒤로가기">
         <ArrowLeft aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        onClick={onReport}
-        disabled={screen === 'home' || screen === 'searchResults'}
-        aria-label="리포트"
-      >
+      </NavButton>
+      <NavButton onClick={onReport} disabled={reportDisabled} label="리포트">
         <FileText aria-hidden="true" />
-      </button>
-      <button type="button" onClick={onSearch} aria-label="검색">
+      </NavButton>
+      <NavButton onClick={onSearch} label="검색">
         <Search aria-hidden="true" />
-      </button>
-    </nav>
+      </NavButton>
+    </motion.nav>
   );
 }
 
-// ── MiniChart ─────────────────────────────────────────────────────────────────
-function MiniChart() {
+function NavButton({
+  onClick,
+  disabled = false,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="mini-chart" aria-label="전략 성과 목업 차트">
-      {[34, 62, 48, 74, 56, 82, 68].map((h, i) => (
-        <span key={`${h}-${i}`} style={{ height: `${h}%` }} />
+    <motion.button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      whileHover={disabled ? undefined : { scale: 1.08 }}
+      whileTap={disabled ? undefined : { scale: 0.92 }}
+      transition={springSnappy}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
+// ── MiniChart ────────────────────────────────────────────────────────
+/**
+ * 목업 차트. 백엔드에 시세 데이터가 없어 값 자체는 고정이며, 실제 수치가 아니다.
+ * (docs 6.6 미구현 항목 — 실시간 시세 연동 없음)
+ */
+const CHART_BARS = [34, 62, 48, 74, 56, 82, 68];
+
+function MiniChart() {
+  const motionSafe = useMotionSafe();
+
+  return (
+    <div className="mini-chart" aria-label="전략 성과 목업 차트" role="img">
+      {CHART_BARS.map((h, i) => (
+        <motion.span
+          key={`${h}-${i}`}
+          initial={motionSafe ? { height: 0 } : false}
+          animate={{ height: `${h}%` }}
+          transition={{ ...springSoft, delay: 0.15 + i * 0.05 }}
+        />
       ))}
     </div>
   );
 }
 
-// ── Pure utility functions ────────────────────────────────────────────────────
-function getSearchKeywordNodes(cluster: IssueCluster) {
-  const nodes: Array<{ keyword: string }> = [];
+// ── 순수 유틸 ────────────────────────────────────────────────────────
+function getSearchKeywordNodes(cluster: IssueCluster): string[] {
   const seen = new Set<string>();
+  const nodes: string[] = [];
 
-  const push = (keyword: string) => {
-    if (seen.has(keyword)) return;
+  for (const keyword of cluster.recommendedKeywords) {
+    if (seen.has(keyword)) continue;
     seen.add(keyword);
-    nodes.push({ keyword });
-  };
+    nodes.push(keyword);
+  }
 
-  cluster.recommendedKeywords.forEach((kw) => push(kw));
-
-  return nodes.slice(0, 11);
+  return nodes.slice(0, MAX_KEYWORD_NODES);
 }
 
 function getVisibleNews(cluster: IssueCluster, centerNewsId: string): NewsCard[] {
@@ -691,13 +817,13 @@ function getVisibleNews(cluster: IssueCluster, centerNewsId: string): NewsCard[]
     .filter((id) => id !== centerNewsId)
     .map(resolveNews);
 
-  if (candidates.length >= 3) return candidates.slice(0, 3);
+  if (candidates.length >= MAX_RELATED_NODES) return candidates.slice(0, MAX_RELATED_NODES);
 
-  // Fallback: combine static + dynamic news cards
+  // 폴백: 정적 + 동적 뉴스 카드를 합쳐 최소 개수를 채운다
   const allNews = [...staticNewsCards, ...Array.from(dynNews.values())];
   const fallback = allNews
     .filter((n) => n.id !== centerNewsId && !candidates.some((c) => c.id === n.id))
-    .slice(0, 3 - candidates.length);
+    .slice(0, Math.max(0, 3 - candidates.length));
 
   return [...candidates, ...fallback];
 }

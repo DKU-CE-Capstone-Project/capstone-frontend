@@ -200,16 +200,48 @@ export async function fetchAndCacheCluster(term: string): Promise<IssueCluster> 
     return dynClusters.get(clusterId)!;
   }
 
-  const recommendedKeywords = await fetchRecommendedKeywordLabels(10).catch(() => []);
-  const keywords = unique([trimmed, ...recommendedKeywords]).slice(0, 11);
+  // 추천 키워드 호출 실패를 여기서 삼키면 안 된다.
+  // 예전에는 .catch(() => [])로 흡수해 "검색어 1개"짜리 클러스터를 정상 반환했고,
+  // 호출부의 try/catch가 발동하지 않아 백엔드가 없을 때 키워드 맵에
+  // 중심 노드 하나만 그려졌다. 실패는 호출부로 넘겨 폴백을 타게 한다.
+  const recommendedKeywords = await fetchRecommendedKeywordLabels(10);
+  const keywords = unique([trimmed, ...recommendedKeywords]);
+
+  if (keywords.length <= 1) {
+    throw new Error('추천 키워드가 비어 있어 키워드 맵을 만들 수 없습니다.');
+  }
 
   const cluster: IssueCluster = {
     id: clusterId,
     query: trimmed,
     mainNewsId: '',
     relatedNewsIds: [],
-    recommendedKeywords: keywords.length > 0 ? keywords : staticClusters[0].recommendedKeywords,
+    recommendedKeywords: keywords,
     reportId: `${clusterId}-report-placeholder`,
+  };
+
+  dynClusters.set(clusterId, cluster);
+  return cluster;
+}
+
+/**
+ * API가 실패했을 때 쓰는 로컬 대체 클러스터.
+ *
+ * `findOrResolveClusterByQuery`를 그대로 쓰면 매칭되지 않는 검색어는
+ * staticClusters[0]("중동 전황")이 되어 중심 노드가 사용자의 검색어와
+ * 무관해진다. 검색어는 중심에 남기고 키워드만 로컬 데이터로 채운다.
+ */
+export function buildFallbackCluster(term: string): IssueCluster {
+  const trimmed = term.trim();
+  if (!trimmed) return staticClusters[0];
+
+  const base = findOrResolveClusterByQuery(trimmed);
+  const clusterId = `fallback-${slugify(trimmed)}`;
+  const cluster: IssueCluster = {
+    ...base,
+    id: clusterId,
+    query: trimmed,
+    recommendedKeywords: unique([trimmed, ...base.recommendedKeywords]),
   };
 
   dynClusters.set(clusterId, cluster);

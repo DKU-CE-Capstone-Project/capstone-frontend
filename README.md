@@ -9,7 +9,8 @@ React, TypeScript, Vite 기반으로 구현되어 있으며, 백엔드의 9주�
 - React 19
 - TypeScript
 - Vite
-- lucide-react
+- lucide-react (아이콘)
+- motion (화면 전환·맵 노드 애니메이션)
 
 ## 시작하기
 
@@ -96,9 +97,12 @@ VITE_API_BASE=http://127.0.0.1:8000
    - 뉴스 카드 이미지는 백엔드의 `thumbnail_url`을 우선 사용하고, 없을 때만 프론트 fallback 이미지를 사용합니다.
 
 3. 뉴스맵
-   - 중심 뉴스 기준으로 `GET /api/v1/news/{news_id}/graph`와 `GET /api/v1/news/{news_id}/related`를 호출합니다.
-   - 관련 뉴스는 원형 노드 형태로 표시됩니다.
-   - 연관 뉴스 이미지는 `related.thumbnail_url` → 기존 캐시 이미지 → 프론트 fallback 이미지 순서로 결정합니다.
+   - 키워드 맵에서 넘어온 `GET /api/v1/news/search` 결과를 중심 뉴스 + 연관 뉴스로 배치합니다.
+   - 연관 뉴스는 원형 노드로 표시되며, 노드를 누르면 그 뉴스가 맵 중심으로 이동합니다.
+   - 연관 뉴스 이미지는 `thumbnail_url` → 기존 캐시 이미지 → 프론트 fallback 이미지 순서로 결정하고,
+     이미지 로드가 실패하면 톤 배경 + 아이콘으로 대체합니다.
+   - `GET /api/v1/news/{news_id}/graph`, `GET /api/v1/news/{news_id}/related`를 쓰는
+     `fetchAndCacheNewsMap()`이 `apiAdapter.ts`에 있지만 **아직 화면에서 호출하지 않습니다.**
 
 4. 뉴스 상세
    - `GET /api/v1/news/{news_id}/source`를 호출해 원문 출처 정보를 가져옵니다.
@@ -122,17 +126,63 @@ VITE_API_BASE=http://127.0.0.1:8000
 
 뉴스맵 화면의 별도 floating 리포트 버튼은 사용하지 않으며, 리포트 이동은 하단 네비게이션 버튼 또는 뉴스 상세 화면의 `리포트 보기` 버튼을 통해 수행합니다.
 
+그 밖에:
+
+- 좌측 상단 버튼으로 **라이트/다크 테마**를 전환합니다. 선택은 `localStorage`(`econmind.theme`)에
+  저장되고, 저장된 값이 없으면 OS 설정(`prefers-color-scheme`)을 따릅니다.
+- API 실패 알림은 화면 좌측 하단 토스트로 표시되며 6초 뒤 자동으로 사라집니다.
+  (이전에는 검색 결과 화면에서만 보였습니다.)
+
 ## 프로젝트 구조
 
 ```text
 src/
-  App.tsx                 화면 전환, 사용자 액션, 주요 UI 컴포넌트
+  App.tsx                 화면 전환, 사용자 액션, 화면 단위 컴포넌트
   main.tsx                React 엔트리 포인트
-  styles.css              전체 스타일
+  styles.css              전체 스타일 (색상은 전부 design/tokens.css 변수 참조)
+  components/
+    KeywordMap.tsx        검색어 + 추천 키워드 궤도 맵
+    NewsMapCanvas.tsx     중심 뉴스 + 연관 뉴스 맵 (전체 화면 / 미니맵 공용)
+    ui.tsx                테마 토글, 로딩 오버레이, 스켈레톤, 토스트, 이미지, 빈 상태
+  design/
+    tokens.css            디자인 토큰 (라이트/다크 색상, 간격, 타이포, 모션)
+    useTheme.ts           테마 상태와 <html data-theme> 적용
+  layout/
+    mapLayout.ts          맵 노드 좌표 계산 (뷰포트별 프로필)
+    useFieldScale.ts      컨테이너 크기 관찰 + 설계 공간 → 실제 크기 배율
+  motion/
+    presets.ts            애니메이션 variants·transition, reduced-motion 처리
   data/
     apiAdapter.ts         백엔드 /api/v1 응답을 프론트 데이터 형태로 변환
     mockData.ts           API 실패 시 사용하는 로컬 fallback 데이터와 타입 정의
 ```
+
+## 맵 레이아웃
+
+맵 노드의 좌표는 CSS가 아니라 `src/layout/mapLayout.ts`가 계산합니다.
+
+- 설계 공간(고정 px) 안에서 극좌표로 위치를 잡고, 컨테이너 크기에 맞춰 `scale`만 곱합니다.
+- 컨테이너 비율이 다른 자리마다 **프로필**을 둡니다.
+  - 키워드 맵: 데스크톱 / 모바일
+  - 뉴스맵: 데스크톱(좌우 부채꼴) / 미니맵·모바일(상하 부채꼴)
+- 연관 뉴스 개수에 따라 노드 지름이 자동으로 줄어듭니다 (상한 6개).
+- 노드 지름이 180px 미만이면 `상세` 버튼을 숨기고 노드 자체가 상세 이동 버튼이 됩니다.
+
+좌표를 CSS에서 분리하면서 브레이크포인트마다 노드 위치를 반복하던 274줄이 사라졌고,
+중심 노드를 바꿀 때 위치 변화를 애니메이션으로 보간할 수 있게 됐습니다.
+
+## 애니메이션
+
+`src/motion/presets.ts`에 정의된 프리셋만 사용합니다. 주요 동작은 다음과 같습니다.
+
+- 화면 전환: 5개 화면 cross-fade, 홈 검색창 ↔ 검색 결과 하단 스트립은 `layoutId`로 이어집니다.
+- 맵: 중심에서 바깥으로 순차 등장(stagger), 노드 미세 부유, 연결선 draw-on,
+  hover 시 확대 + 연결선 강조 + 나머지 노드 디밍, 중심 교체 시 재배치.
+- 리포트: 종목 카드 순차 등장, 차트 막대 0 → 값.
+- 로딩: 전역 오버레이 + 맵 자리 스켈레톤, 단계별 문구 표시.
+
+`prefers-reduced-motion: reduce`가 설정된 환경에서는 반복 애니메이션이 꺼지고
+최종 상태만 렌더링됩니다.
 
 ## mock 데이터
 
@@ -146,6 +196,9 @@ src/
 - 아직 API 응답을 받기 전 초기 렌더링 상태
 - 리포트/전략 API가 백엔드 fallback 문구를 반환한 경우
 - 백엔드가 `thumbnail_url`을 비워 반환한 경우 해당 카드 이미지만 프론트 fallback 이미지로 대체됩니다.
+
+> 추천 키워드 API가 실패하면 키워드 맵은 로컬 fallback 키워드로 채워지고 토스트로 알립니다.
+> (이전에는 실패를 내부에서 삼켜 검색어 1개짜리 맵이 그려졌습니다.)
 
 백엔드 mock 뉴스 JSON은 프론트 저장소가 아니라 백엔드 저장소의 `fixtures/news_mock.json`에 있습니다.
 
@@ -171,17 +224,23 @@ npm run preview
 
 - `GET /api/v1/keywords/recommended`
 - `GET /api/v1/news/search`
-- `GET /api/v1/news/{news_id}/graph`
-- `GET /api/v1/news/{news_id}/related`
 - `GET /api/v1/news/{news_id}/source`
 - `POST /api/v1/reports`
 - `GET /api/v1/reports/{report_id}`
 - `POST /api/v1/strategies`
 - `GET /api/v1/strategies/{strategy_id}`
 
+`apiAdapter.ts`에 어댑터는 있으나 아직 화면에서 호출하지 않는 API:
+
+- `GET /api/v1/news/{news_id}/graph`
+- `GET /api/v1/news/{news_id}/related`
+
 ## 주의 사항
 
 - 프론트와 백엔드를 다른 포트에서 실행할 경우, 백엔드 CORS 허용 목록에 프론트 Origin이 포함되어 있어야 합니다.
+- 종목 등락 색상은 **한국 증시 관례**를 따릅니다 — 상승 = 빨강, 하락 = 파랑.
+  서구권 관례(상승 = 초록)와 반대이므로 `design/tokens.css`의 `--up` / `--down` 수정 시 주의하세요.
+- 본문 폰트로 Pretendard를 CDN에서 불러옵니다. 오프라인 환경에서는 시스템 폰트로 대체됩니다.
 - `VITE_API_BASE`를 변경했다면 개발 서버를 재시작해야 반영됩니다.
 - `dist/`와 `node_modules/`는 Git에 올리지 않습니다.
 
