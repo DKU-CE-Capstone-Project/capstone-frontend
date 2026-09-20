@@ -220,18 +220,24 @@ npm run preview
 
 ## 컨테이너로 실행
 
-프론트엔드만 단독으로 띄워 UI 를 확인할 때는 이 저장소의 compose 를 쓴다.
-전체 스택(백엔드 · Mongo · NATS · Redis)은 `capstone-deploy` 저장소의 compose 를 쓸 것.
+이 저장소의 compose 는 **프론트 + mock API** 2개 서비스로 UI 를 확인하는 용도다.
+전체 스택(진짜 백엔드 · Mongo · NATS · Redis)은 `capstone-deploy` 저장소의 compose 를 쓸 것.
 
 ```bash
 docker compose up --build
-# → http://localhost:8080
+# → http://localhost:8080   (mock API 가 /api/v1 응답을 준다)
+```
+
+프론트만 띄우려면 서비스를 지정한다.
+
+```bash
+docker compose up --build frontend
 ```
 
 **백엔드가 없어도 컨테이너는 정상 기동하고 5화면이 끝까지 동작한다.**
 `/api/*` 요청은 502 가 되고, 프론트가 로컬 fallback 데이터로 대체해 그린다.
 
-백엔드를 호스트에서 돌리는 중이라면 `docker-compose.yaml` 의 `BACKEND_ORIGIN` 을
+진짜 백엔드를 호스트에서 돌리는 중이라면 `docker-compose.yaml` 의 `BACKEND_ORIGIN` 을
 `host.docker.internal:8000` 으로 바꾼다.
 
 compose 없이 직접 빌드·실행할 수도 있다.
@@ -240,6 +246,45 @@ compose 없이 직접 빌드·실행할 수도 있다.
 docker build --build-arg VITE_API_BASE="" -t econmind-frontend:dev .
 docker run --rm -p 8080:80 -e BACKEND_ORIGIN=host.docker.internal:8000 econmind-frontend:dev
 ```
+
+## mock API (`mock-api/`)
+
+프론트 UI 작업용 더미 API 다. `capstone-backend` 의 `/api/v1` 응답 스키마
+(`app/schemas.py`)를 그대로 흉내 내며, **표준 라이브러리만 쓴다** — 의존성 설치가 없다.
+
+> 실제 백엔드에도 mock 모드(`USE_MOCK_NEWS=true`)가 있지만 `google-genai`,
+> `anthropic`, `trafilatura`, `lxml` 등을 설치해야 해서 프론트만 만질 때는 과하다.
+> **실제 API 동작을 검증하려면 이 서버가 아니라 진짜 백엔드를 써야 한다.**
+
+제공하는 엔드포인트
+
+| 엔드포인트 | 비고 |
+|---|---|
+| `GET /health` | |
+| `GET /api/v1/keywords/recommended` | 한국어 키워드 10종 |
+| `GET /api/v1/news/search` | 뉴스 10건. 검색어가 1건만 걸리면 같은 topic 기사로 채운다 |
+| `GET /api/v1/news/{id}/source` | 원문 본문 포함 |
+| `GET /api/v1/news/{id}/graph`, `/related` | 프론트가 아직 호출하지 않지만 미리 준비 |
+| `POST /api/v1/reports` → `GET /api/v1/reports/{id}` | |
+| `POST /api/v1/strategies` → `GET /api/v1/strategies/{id}` | |
+| `GET /api/v1/thumbnails/{tone}-{id}.svg` | 썸네일을 SVG 로 직접 생성 |
+
+썸네일을 직접 만들기 때문에 **외부 이미지 호스트에 의존하지 않는다.** 폐쇄망에서도
+화면이 그대로 나온다.
+
+`npm run dev` 로 프론트를 돌리면서 mock 만 붙일 수도 있다.
+
+```bash
+docker compose up -d econmind-api        # 또는: python3 mock-api/server.py
+VITE_API_BASE=http://127.0.0.1:8000 npm run dev
+```
+
+### 주의
+
+- 리포트·전략은 메모리에만 저장된다. 컨테이너를 내리면 사라진다.
+- 응답 본문에 `AI 분석 준비 중`, `생성하지 못했습니다`, `기본 포트폴리오 전략` 이
+  들어가면 프론트(`hasBackendFallbackText`)가 응답을 버리고 자체 mock 리포트로
+  갈아탄다. mock 데이터를 고칠 때 이 표현을 쓰지 말 것.
 
 ### 컨테이너 헬스체크
 
