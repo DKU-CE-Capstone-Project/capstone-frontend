@@ -784,9 +784,10 @@ p {
   font-size: var(--text-sm);
 }
 
+/* 3열 고정이면 종목이 2개일 때 빈 칸이 남는다. 개수에 맞춰 열이 정해지게 둔다. */
 .impact-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--space-3);
   max-width: 665px;
   margin: var(--space-5) 0 var(--space-6);
@@ -819,12 +820,43 @@ p {
   background: var(--mixed-soft);
 }
 
-.impact-card strong {
-  display: block;
-  color: var(--text-primary);
+.impact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
-.impact-card span {
+.impact-card strong {
+  color: var(--text-primary);
+  word-break: keep-all;
+}
+
+/* 매매 의견 배지 — 카드 색상(상승 빨강 / 하락 파랑)을 글자로도 한 번 더 말해준다 */
+.impact-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-full);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+}
+
+.impact-card.up .impact-action {
+  color: var(--up);
+}
+
+.impact-card.down .impact-action {
+  color: var(--down);
+}
+
+.impact-card.mixed .impact-action {
+  color: var(--mixed);
+}
+
+.impact-ticker {
   display: block;
   color: var(--text-tertiary);
   margin: var(--space-1) 0 var(--space-3);

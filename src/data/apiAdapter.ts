@@ -410,6 +410,61 @@ function cacheSearchAsCluster({
   return cluster;
 }
 
+const RISK_LABEL: Record<string, string> = { low: '보수적', medium: '중립적', high: '공격적' };
+const PERIOD_LABEL: Record<string, string> = { short: '단기', mid: '중기', long: '장기' };
+
+/**
+ * 매매 의견 → 카드 색상. 상승=빨강, 하락=파랑인 한국 증시 관례를 따른다
+ * (design/tokens.css 의 --up / --down).
+ */
+const ACTION_META: Record<string, { label: string; direction: 'up' | 'down' | 'mixed' }> = {
+  buy: { label: '매수', direction: 'up' },
+  sell: { label: '매도', direction: 'down' },
+  hold: { label: '보유', direction: 'mixed' },
+  watch: { label: '관망', direction: 'mixed' },
+};
+
+function label(map: Record<string, string>, key: string): string {
+  return map[key] ?? key;
+}
+
+/**
+ * 종목 카드는 전략 응답의 strategy_items 로 만든다.
+ *
+ * 이전 구현은 related_stocks(문자열 배열)만 보고 카드를 만들면서
+ * 모든 카드에 같은 market_impact 를 복사해 넣고 symbol 과 name 에 같은 값을 넣었다.
+ * 종목이 3개면 같은 문장이 3번 반복됐고 direction 도 늘 'mixed' 라 등락 색상이
+ * 아무 의미가 없었다. 정작 strategy_items 에는 ticker · stock_name · action · reason 이
+ * 다 들어 있는데 watchlist 에 쓸 이름만 뽑고 나머지를 버리고 있었다.
+ */
+function buildStockImpacts(
+  apiReport: ApiReportResponse,
+  strategy: ApiStrategyResponse | null,
+): Report['stockImpacts'] {
+  if (strategy && strategy.strategy_items.length > 0) {
+    return strategy.strategy_items.map((item) => {
+      const meta = ACTION_META[item.action] ?? ACTION_META.watch;
+      const name = item.stock_name || item.ticker;
+      return {
+        // 백엔드가 티커 없이 종목명만 줄 때가 있다. 같은 값을 두 번 쓰지 않는다.
+        symbol: item.ticker && item.ticker !== name ? item.ticker : '',
+        name,
+        impact: item.reason,
+        direction: meta.direction,
+        actionLabel: meta.label,
+      };
+    });
+  }
+
+  // 전략이 없으면 종목명만 나열한다. 같은 문장을 카드마다 반복하지 않는다.
+  return apiReport.related_stocks.map((stock) => ({
+    symbol: '',
+    name: stock,
+    impact: '',
+    direction: 'mixed' as const,
+  }));
+}
+
 function mapApiReport(
   apiReport: ApiReportResponse,
   clusterId: string,
@@ -421,19 +476,15 @@ function mapApiReport(
     title: apiReport.title,
     eventSummary: apiReport.summary || apiReport.event_analysis,
     marketImpact: apiReport.market_impact,
-    stockImpacts: apiReport.related_stocks.map((stock) => ({
-      symbol: stock,
-      name: stock,
-      impact: apiReport.market_impact,
-      direction: 'mixed',
-    })),
+    stockImpacts: buildStockImpacts(apiReport, strategy),
     riskFactors: apiReport.risk_factors,
     strategySummary: strategy
       ? {
-          stance: `전략 ${strategy.risk}`,
+          // 예전에는 `전략 ${strategy.risk}` 라서 화면에 "전략 medium" 으로 찍혔다
+          stance: `${label(PERIOD_LABEL, strategy.period)} · ${label(RISK_LABEL, strategy.risk)} 전략`,
           rationale: strategy.strategy_summary,
           watchlist: strategy.strategy_items.map((item) => item.stock_name || item.ticker),
-          riskWarning: `예상 수익률 ${strategy.expected_return}%, 기간 ${strategy.period}`,
+          riskWarning: `예상 수익률 ${strategy.expected_return}% · ${label(PERIOD_LABEL, strategy.period)} 기준`,
         }
       : {
           stance: '전략 생성 대기',
@@ -579,7 +630,11 @@ function cacheNewsCard(next: NewsCard): void {
   dynNews.set(next.id, existing ? mergeNewsCard(existing, next) : next);
 }
 
-function findKnownNews(id: string): NewsCard | undefined {
+/**
+ * resolveNews 와 달리 모르는 id 에 staticNewsCards[0] 을 돌려주지 않는다.
+ * "조용히 엉뚱한 뉴스"를 만들면 안 되는 자리에서 쓴다.
+ */
+export function findKnownNews(id: string): NewsCard | undefined {
   return dynNews.get(id) ?? staticNewsCards.find((news) => news.id === id);
 }
 

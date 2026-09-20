@@ -31,10 +31,14 @@ export type Report = {
   eventSummary: string;
   marketImpact: string;
   stockImpacts: Array<{
+    /** 티커. 종목명과 같으면 빈 문자열 — 카드에 같은 값을 두 번 쓰지 않는다 */
     symbol: string;
     name: string;
+    /** 종목별 코멘트. 없으면 빈 문자열이고 카드에서 생략된다 */
     impact: string;
     direction: 'up' | 'down' | 'mixed';
+    /** 전략 응답의 action(buy/hold/sell/watch)을 한국어로 옮긴 것 */
+    actionLabel?: string;
   }>;
   riskFactors: string[];
   strategySummary: {

@@ -85,9 +85,9 @@ export function NewsMapCanvas({
 
             const dimmed = hovered !== null && hovered !== node.id;
             const isCenter = node.isCenter;
-            // 지름 180px 아래에서는 pill이 출처 텍스트를 덮는다(미니맵 132, 모바일 124).
-            // 그때는 pill을 숨기고 노드 자체를 상세 이동 버튼으로 쓴다.
-            const showPill = node.size >= 180;
+            // 원이 작으면 pill이 출처 텍스트를 덮는다(미니맵 중심 196, 연관 132, 모바일 190/124).
+            // 여유가 있는 전체 화면 맵에서만 pill을 쓰고, 나머지는 노드 자체가 상세 버튼이다.
+            const showPill = node.size >= 210;
             const canFocus = !isCenter && showPill && !!onFocusNews;
 
             return (

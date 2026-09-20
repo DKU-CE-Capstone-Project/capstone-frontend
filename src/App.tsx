@@ -9,21 +9,15 @@ import {
   Newspaper,
   Search,
 } from 'lucide-react';
-import {
-  clusters,
-  newsCards as staticNewsCards,
-  type IssueCluster,
-  type NewsCard,
-  type Report,
-} from './data/mockData';
+import { clusters, type IssueCluster, type NewsCard, type Report } from './data/mockData';
 import {
   buildFallbackCluster,
   createAndCacheReport,
-  dynNews,
   fetchAndCacheCluster,
   fetchAndCacheNewsCluster,
   fetchAndCacheNewsSource,
   fetchRecommendedKeywordLabels,
+  findKnownNews,
   findOrResolveClusterByQuery,
   resolveCluster,
   resolveNews,
@@ -630,17 +624,21 @@ function ReportView({
               variants={staggerContainer(0.07)}
               aria-label="종목 영향"
             >
-              {report.stockImpacts.map((stock) => (
+              {report.stockImpacts.map((stock, i) => (
                 <motion.article
-                  key={stock.symbol}
+                  key={`${stock.name}-${i}`}
                   className={`impact-card ${stock.direction}`}
                   variants={riseVariants}
                   whileHover={{ y: -3 }}
                   transition={springSnappy}
                 >
-                  <strong>{stock.name}</strong>
-                  <span>{stock.symbol}</span>
-                  <p>{stock.impact}</p>
+                  <div className="impact-head">
+                    <strong>{stock.name}</strong>
+                    {/* 색만으로 방향을 나타내면 색각 이상 사용자가 구분할 수 없다 */}
+                    {stock.actionLabel && <span className="impact-action">{stock.actionLabel}</span>}
+                  </div>
+                  {stock.symbol && <span className="impact-ticker">{stock.symbol}</span>}
+                  {stock.impact && <p>{stock.impact}</p>}
                 </motion.article>
               ))}
             </motion.section>
@@ -657,7 +655,8 @@ function ReportView({
             </div>
           </motion.section>
 
-          {report.strategySummary.watchlist.length > 0 && (
+          {/* 종목 카드가 이미 같은 종목을 보여주므로 카드가 없을 때만 낸다 */}
+          {report.stockImpacts.length === 0 && report.strategySummary.watchlist.length > 0 && (
             <motion.section className="report-block" variants={riseVariants}>
               <h3>관심 종목</h3>
               <div className="tag-list">
@@ -811,21 +810,20 @@ function getSearchKeywordNodes(cluster: IssueCluster): string[] {
   return nodes.slice(0, MAX_KEYWORD_NODES);
 }
 
+/**
+ * 맵에 그릴 연관 뉴스. 클러스터에 실제로 들어 있는 뉴스만 돌려준다.
+ *
+ * 이전 구현은 개수가 모자라면 staticNewsCards 로 채웠다. 그래서 API 가
+ * 1건만 반환하면 AI 기사 옆에 전혀 무관한 원유 기사가 "연관 뉴스"로 붙었다.
+ * 부족하면 부족한 대로 그리는 편이 맞다. resolveNews 는 모르는 id 에
+ * staticNewsCards[0] 을 돌려주므로 여기서는 findKnownNews 를 쓴다.
+ */
 function getVisibleNews(cluster: IssueCluster, centerNewsId: string): NewsCard[] {
-  const clusterNewsIds = [cluster.mainNewsId, ...cluster.relatedNewsIds];
-  const candidates = clusterNewsIds
-    .filter((id) => id !== centerNewsId)
-    .map(resolveNews);
-
-  if (candidates.length >= MAX_RELATED_NODES) return candidates.slice(0, MAX_RELATED_NODES);
-
-  // 폴백: 정적 + 동적 뉴스 카드를 합쳐 최소 개수를 채운다
-  const allNews = [...staticNewsCards, ...Array.from(dynNews.values())];
-  const fallback = allNews
-    .filter((n) => n.id !== centerNewsId && !candidates.some((c) => c.id === n.id))
-    .slice(0, Math.max(0, 3 - candidates.length));
-
-  return [...candidates, ...fallback];
+  return [cluster.mainNewsId, ...cluster.relatedNewsIds]
+    .filter((id) => id && id !== centerNewsId)
+    .map(findKnownNews)
+    .filter((news): news is NewsCard => news !== undefined)
+    .slice(0, MAX_RELATED_NODES);
 }
 
 export default App;

@@ -273,7 +273,13 @@ def build_report(report_id: str, req: dict) -> dict:
 def build_strategy(strategy_id: str, req: dict) -> dict:
     report = REPORTS.get(req.get("report_id", ""), {})
     stocks = report.get("related_stocks") or NEWS[0]["stocks"]
-    actions = ["buy", "hold", "watch"]
+    # 의견별로 코멘트를 다르게 둔다 — 카드마다 같은 문장이 반복되면
+    # 프론트의 종목 카드 렌더를 제대로 확인할 수 없다.
+    plan = [
+        ("buy", "수요 전망 상향의 직접 수혜 구간으로 평가된다."),
+        ("hold", "실적이 확인되기 전까지는 보유 관점이 적절하다."),
+        ("watch", "비용 변수와 수혜가 동시에 걸려 있어 확인이 필요하다."),
+    ]
 
     return {
         "strategy_id": strategy_id,
@@ -288,10 +294,8 @@ def build_strategy(strategy_id: str, req: dict) -> dict:
             {
                 "ticker": s,
                 "stock_name": s,
-                "action": actions[i % len(actions)],
-                "reason": "수요 전망 상향의 직접 수혜 구간으로 평가된다."
-                if i % 3 == 0
-                else "비용 변수와 수혜가 동시에 걸려 있어 확인이 필요하다.",
+                "action": plan[i % len(plan)][0],
+                "reason": plan[i % len(plan)][1],
             }
             for i, s in enumerate(stocks)
         ],
