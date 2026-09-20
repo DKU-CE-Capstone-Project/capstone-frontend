@@ -12,4 +12,11 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+# resolver 와 $econmind_backend 를 기동 시 생성한다 (nginx.conf 주석 참고)
+COPY docker-entrypoint.d/10-backend-resolver.sh /docker-entrypoint.d/10-backend-resolver.sh
+RUN chmod +x /docker-entrypoint.d/10-backend-resolver.sh
+# 백엔드를 다른 주소에 띄웠다면 이 값만 바꾸면 된다
+ENV BACKEND_ORIGIN=econmind-api:8000
 EXPOSE 80
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
+    CMD wget -qO- http://127.0.0.1/healthz || exit 1

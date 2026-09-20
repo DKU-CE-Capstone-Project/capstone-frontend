@@ -218,6 +218,45 @@ npm run build
 npm run preview
 ```
 
+## 컨테이너로 실행
+
+프론트엔드만 단독으로 띄워 UI 를 확인할 때는 이 저장소의 compose 를 쓴다.
+전체 스택(백엔드 · Mongo · NATS · Redis)은 `capstone-deploy` 저장소의 compose 를 쓸 것.
+
+```bash
+docker compose up --build
+# → http://localhost:8080
+```
+
+**백엔드가 없어도 컨테이너는 정상 기동하고 5화면이 끝까지 동작한다.**
+`/api/*` 요청은 502 가 되고, 프론트가 로컬 fallback 데이터로 대체해 그린다.
+
+백엔드를 호스트에서 돌리는 중이라면 `docker-compose.yaml` 의 `BACKEND_ORIGIN` 을
+`host.docker.internal:8000` 으로 바꾼다.
+
+compose 없이 직접 빌드·실행할 수도 있다.
+
+```bash
+docker build --build-arg VITE_API_BASE="" -t econmind-frontend:dev .
+docker run --rm -p 8080:80 -e BACKEND_ORIGIN=host.docker.internal:8000 econmind-frontend:dev
+```
+
+### 컨테이너 헬스체크
+
+- `GET /healthz` — 프론트 컨테이너 자체의 생존 확인 (nginx 가 직접 200 응답)
+- `GET /health` — 백엔드로 프록시된다. 백엔드가 없으면 502 이므로 프론트 헬스체크로 쓰면 안 된다
+
+### nginx 프록시 동작
+
+`nginx.conf` 는 `proxy_pass` 에 호스트명을 리터럴로 쓰지 않고 `$econmind_backend`
+변수를 거친다. 리터럴로 쓰면 nginx 가 **기동 시점에** DNS 를 해석하고 실패 시
+`host not found in upstream "econmind-api"` 로 아예 뜨지 않아, 백엔드 없이
+프론트만 띄우는 것이 불가능하기 때문이다.
+
+변수와 `resolver` 는 `docker-entrypoint.d/10-backend-resolver.sh` 가 컨테이너 기동 시
+`/etc/nginx/conf.d/00-backend.conf` 로 생성한다. `resolver` 주소는 컨테이너의
+`/etc/resolv.conf` 에서 읽고, 없으면 Docker 내장 DNS(`127.0.0.11`)로 떨어진다.
+
 ## 사용 API
 
 프론트에서 사용하는 주요 API는 다음과 같습니다.
