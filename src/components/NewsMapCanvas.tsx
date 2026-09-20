@@ -117,7 +117,7 @@ export function NewsMapCanvas({
                 >
                   <motion.button
                     type="button"
-                    className={`news-node tone-${news.thumbnailTone}${isCenter ? ' is-center' : ''}`}
+                    className={`news-node tone-${news.thumbnailTone}${isCenter ? ' is-center' : ''}${canFocus ? ' is-focusable' : ''}`}
                     whileHover={{ scale: 1.05, y: -4 }}
                     whileTap={{ scale: 0.98 }}
                     transition={springSnappy}
@@ -145,13 +145,17 @@ export function NewsMapCanvas({
                     <span className="node-copy">
                       <strong style={{ fontSize: node.titleFont }}>{news.title}</strong>
                       <small style={{ fontSize: node.metaFont }}>{news.source}</small>
+                      {canFocus && (
+                        <span
+                          className="node-focus-hint"
+                          style={{ fontSize: node.metaFont }}
+                          aria-hidden="true"
+                        >
+                          <Crosshair size={12} />
+                          중심으로
+                        </span>
+                      )}
                     </span>
-                    {canFocus && (
-                      <span className="node-focus-hint" aria-hidden="true">
-                        <Crosshair size={12} />
-                        중심으로
-                      </span>
-                    )}
                   </motion.button>
 
                   {/* 원 전체와 겹치지 않는 별도 버튼 — 버튼 중첩은 유효하지 않은 마크업이라 형제로 둔다 */}

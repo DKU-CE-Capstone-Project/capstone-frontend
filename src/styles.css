@@ -484,29 +484,27 @@ p {
   font-weight: var(--weight-semibold);
 }
 
-/* 연관 노드 hover 시에만 노출되는 안내 — 원을 누르면 중심이 바뀐다는 힌트 */
+/* 연관 노드 hover 시 출처 대신 나오는 안내 — 원을 누르면 중심이 바뀐다는 힌트.
+   pill 과 같은 자리에 두고 hover 로 pill 을 숨기면, pill 로 마우스를 올리는
+   순간에도 부모의 :hover 가 걸려 pill 이 사라져 클릭 자체가 불가능했다.
+   출처 텍스트와 자리를 맞바꿔 쓰면 겹치지 않는다. */
 .node-focus-hint {
-  position: absolute;
-  left: 50%;
-  bottom: 9%;
-  transform: translateX(-50%);
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 4px;
-  padding: 3px 9px;
-  border-radius: var(--radius-full);
-  background: var(--accent-soft);
   color: var(--accent);
-  font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
   white-space: nowrap;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
 .news-node:hover .node-focus-hint,
 .news-node:focus-visible .node-focus-hint {
-  opacity: 1;
+  display: inline-flex;
+}
+
+.news-node.is-focusable:hover .node-copy small,
+.news-node.is-focusable:focus-visible .node-copy small {
+  display: none;
 }
 
 /* 버튼 중첩은 유효하지 않은 마크업이라 원의 형제로 두고 위에 겹쳐 놓는다 */
@@ -530,17 +528,6 @@ p {
 
 .node-detail-pill:hover {
   background: var(--brand-hover);
-}
-
-/* hover 힌트와 자리가 겹치므로 서로 교대한다 */
-.news-node-float:hover .node-detail-pill {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.news-node-float:focus-within .node-detail-pill {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 /* 썸네일 톤 */
