@@ -273,36 +273,57 @@ export async function fetchAndCacheNewsCluster(term: string): Promise<IssueClust
   });
 }
 
+/**
+ * 중심 뉴스의 "이웃"을 그래프 API 로 가져와 클러스터를 다시 구성한다.
+ *
+ * `/news/search` 결과는 검색어에 걸린 기사라 서로 연관이 없을 수 있다.
+ * 뉴스맵이 보여줘야 하는 건 "이 기사와 이어진 기사"이므로 related/graph 를 쓴다.
+ *
+ * related 를 먼저 쓰고 모자라면 graph 의 이웃으로 채운다. 둘 다 distance 를
+ * 주므로 가까운 것부터 앞에 둔다 — 맵은 상한을 넘는 노드를 잘라내므로
+ * 순서가 곧 우선순위다.
+ *
+ * limit 기본값은 맵이 그릴 수 있는 연관 노드 수(MAX_RELATED_NODES)와 맞춰 둔 값이다.
+ * 레이아웃 모듈을 데이터 어댑터가 import 하지 않도록 호출부에서 넘긴다.
+ */
 export async function fetchAndCacheNewsMap(
   newsId: string,
   currentClusterId: string,
+  limit = 6,
 ): Promise<IssueCluster> {
   const currentCluster = resolveCluster(currentClusterId);
   const [graphData, relatedData] = await Promise.all([
     apiGet<ApiGraphResponse>(
-      `/news/${encodeURIComponent(newsId)}/graph?depth=2&limit=10&include_distance=true`,
+      `/news/${encodeURIComponent(newsId)}/graph?depth=2&limit=${limit * 2}&include_distance=true`,
     ),
     apiGet<ApiRelatedResponse>(
-      `/news/${encodeURIComponent(newsId)}/related?limit=3&tier=FREE`,
+      `/news/${encodeURIComponent(newsId)}/related?limit=${limit}&tier=FREE`,
     ),
   ]);
 
-  const centerCard = graphNodeToNewsCard(graphData.center_node, currentCluster.query, 0);
-  cacheNewsCard(centerCard);
+  cacheNewsCard(graphNodeToNewsCard(graphData.center_node, currentCluster.query, 0));
 
-  const relatedIds = relatedData.related_news.map((item, index) => {
-    const card = relatedItemToNewsCard(item, currentCluster.query, index + 1);
-    cacheNewsCard(card);
-    return card.id;
-  });
+  const relatedIds: string[] = [];
 
-  if (relatedIds.length < 3) {
-    for (const node of graphData.nodes) {
-      if (node.news_id === newsId || relatedIds.includes(node.news_id)) continue;
+  [...relatedData.related_news]
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, limit)
+    .forEach((item, index) => {
+      const card = relatedItemToNewsCard(item, currentCluster.query, index + 1);
+      cacheNewsCard(card);
+      relatedIds.push(card.id);
+    });
+
+  if (relatedIds.length < limit) {
+    const neighbours = graphData.nodes
+      .filter((node) => node.news_id !== newsId && !relatedIds.includes(node.news_id))
+      .sort((a, b) => a.distance - b.distance);
+
+    for (const node of neighbours) {
       const card = graphNodeToNewsCard(node, currentCluster.query, relatedIds.length + 1);
       cacheNewsCard(card);
       relatedIds.push(card.id);
-      if (relatedIds.length >= 3) break;
+      if (relatedIds.length >= limit) break;
     }
   }
 

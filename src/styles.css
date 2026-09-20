@@ -564,6 +564,27 @@ p {
   background: var(--node-bg-center);
 }
 
+/* 맵 중심을 바꾼 뒤 이웃을 받아오는 동안 뜨는 표시.
+   전체 화면 오버레이를 쓰면 방금 시작한 재배치 애니메이션을 가린다. */
+.map-status {
+  position: absolute;
+  z-index: var(--z-panel);
+  left: 50%;
+  top: 76px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-md);
+}
+
 /* ══ 검색 결과 하단 스트립 ═══════════════════════════════════════════ */
 
 /**

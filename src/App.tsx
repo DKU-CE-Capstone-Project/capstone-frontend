@@ -15,6 +15,7 @@ import {
   createAndCacheReport,
   fetchAndCacheCluster,
   fetchAndCacheNewsCluster,
+  fetchAndCacheNewsMap,
   fetchAndCacheNewsSource,
   fetchRecommendedKeywordLabels,
   findKnownNews,
@@ -61,7 +62,13 @@ function App() {
   const [centerNewsId, setCenterNewsId] = useState(clusters[0].mainNewsId);
   const [detailNewsId, setDetailNewsId] = useState(clusters[0].mainNewsId);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
+  const [isExpandingMap, setIsExpandingMap] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /**
+   * apiAdapter 의 클러스터 캐시는 모듈 레벨 Map 이라 갱신해도 React 가 모른다.
+   * 화면 전환 없이 캐시만 바뀌는 경우(맵 중심 교체)에 다시 읽게 하는 신호.
+   */
+  const [clusterRevision, setClusterRevision] = useState(0);
   const [recommendedKeywords, setRecommendedKeywords] = useState(
     clusters[0].recommendedKeywords.slice(0, 8),
   );
@@ -70,7 +77,7 @@ function App() {
   const visibleNews = useMemo(
     () => getVisibleNews(activeCluster, centerNewsId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeCluster, centerNewsId, activeClusterId],
+    [activeCluster, centerNewsId, activeClusterId, clusterRevision],
   );
   const centerNews = resolveNews(centerNewsId);
   const report = resolveReport(activeCluster.reportId);
@@ -148,6 +155,15 @@ function App() {
       setActiveClusterId(nextCluster.id);
       setCenterNewsId(nextCluster.mainNewsId);
       setDetailNewsId(nextCluster.mainNewsId);
+
+      // 검색 결과는 "검색어에 걸린 기사"다. 맵에는 "중심 기사와 이어진 기사"를 건다.
+      try {
+        setLoadingLabel('연관 뉴스를 잇는 중…');
+        await loadNeighbours(nextCluster.mainNewsId, nextCluster.id);
+      } catch {
+        // graph/related 실패 — 검색 결과로 만든 연관 목록을 그대로 쓴다
+      }
+
       navigate('newsMap');
     } catch {
       const fallback = buildFallbackCluster(term);
@@ -191,8 +207,30 @@ function App() {
     }
   };
 
-  /** 연관 노드를 맵 중심으로 끌어온다. 주변 노드는 레이아웃 애니메이션으로 재배치된다. */
-  const focusNews = (newsId: string) => setCenterNewsId(newsId);
+  /** 중심 뉴스의 이웃을 그래프 API 로 받아 맵을 다시 구성한다. 실패는 호출부가 처리한다. */
+  const loadNeighbours = (newsId: string, clusterId: string) =>
+    fetchAndCacheNewsMap(newsId, clusterId, MAX_RELATED_NODES);
+
+  /**
+   * 연관 노드를 맵 중심으로 끌어온다.
+   *
+   * 중심은 먼저 바꿔서 재배치 애니메이션이 바로 돌게 하고, 그 뉴스의 이웃은
+   * 뒤이어 받아 채운다. 전체 화면 오버레이를 띄우면 방금 시작한 애니메이션을
+   * 가리므로 맵 위에 작은 상태 표시만 낸다.
+   */
+  const focusNews = async (newsId: string) => {
+    const clusterId = activeCluster.id;
+    setCenterNewsId(newsId);
+    setIsExpandingMap(true);
+    try {
+      await loadNeighbours(newsId, clusterId);
+      setClusterRevision((v) => v + 1);
+    } catch {
+      // 이웃을 못 받으면 지금 클러스터에 있는 뉴스로 계속 보여준다
+    } finally {
+      setIsExpandingMap(false);
+    }
+  };
 
   return (
     <main className="app-shell">
@@ -228,6 +266,7 @@ function App() {
                 centerNews={centerNews}
                 relatedNews={visibleNews}
                 busy={loadingLabel !== null}
+                expanding={isExpandingMap}
                 onOpenDetail={openDetail}
                 onFocusNews={focusNews}
               />
@@ -452,12 +491,14 @@ function NewsMapView({
   centerNews,
   relatedNews,
   busy,
+  expanding,
   onOpenDetail,
   onFocusNews,
 }: {
   centerNews: NewsCard;
   relatedNews: NewsCard[];
   busy: boolean;
+  expanding: boolean;
   onOpenDetail: (newsId: string) => void;
   onFocusNews: (newsId: string) => void;
 }) {
@@ -475,6 +516,23 @@ function NewsMapView({
           onFocusNews={onFocusNews}
         />
       )}
+
+      {/* 중심을 바꾼 뒤 이웃을 받아오는 동안 — 화면을 막지 않는 표시 */}
+      <AnimatePresence>
+        {expanding && (
+          <motion.div
+            className="map-status"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={easeOut}
+            role="status"
+          >
+            연관 뉴스를 잇는 중…
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <PremiumPreview />
     </>
   );

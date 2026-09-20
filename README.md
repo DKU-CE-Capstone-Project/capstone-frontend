@@ -97,12 +97,17 @@ VITE_API_BASE=http://127.0.0.1:8000
    - 뉴스 카드 이미지는 백엔드의 `thumbnail_url`을 우선 사용하고, 없을 때만 프론트 fallback 이미지를 사용합니다.
 
 3. 뉴스맵
-   - 키워드 맵에서 넘어온 `GET /api/v1/news/search` 결과를 중심 뉴스 + 연관 뉴스로 배치합니다.
-   - 연관 뉴스는 원형 노드로 표시되며, 노드를 누르면 그 뉴스가 맵 중심으로 이동합니다.
+   - 중심 뉴스가 정해지면 `GET /api/v1/news/{news_id}/related`와
+     `GET /api/v1/news/{news_id}/graph`로 **그 뉴스와 이어진 기사**를 가져옵니다.
+     `/news/search` 결과는 "검색어에 걸린 기사"라 서로 연관이 없을 수 있어서,
+     맵에는 그래프 이웃을 겁니다. 두 API가 실패하면 검색 결과를 그대로 씁니다.
+   - `related`를 먼저 쓰고 모자라면 `graph`의 이웃으로 채웁니다. 둘 다 `distance`를
+     주므로 가까운 것부터 배치합니다 (상한 6개, 넘으면 잘라냅니다).
+   - 연관 뉴스는 원형 노드로 표시되며, **노드를 누르면 그 뉴스가 맵 중심으로 이동하고
+     그 뉴스의 이웃을 다시 받아옵니다.** 중심은 먼저 바꿔 재배치 애니메이션이 바로 돌고,
+     이웃은 뒤이어 채워집니다. 그동안 맵 위에 작은 상태 표시만 나옵니다.
    - 연관 뉴스 이미지는 `thumbnail_url` → 기존 캐시 이미지 → 프론트 fallback 이미지 순서로 결정하고,
      이미지 로드가 실패하면 톤 배경 + 아이콘으로 대체합니다.
-   - `GET /api/v1/news/{news_id}/graph`, `GET /api/v1/news/{news_id}/related`를 쓰는
-     `fetchAndCacheNewsMap()`이 `apiAdapter.ts`에 있지만 **아직 화면에서 호출하지 않습니다.**
 
 4. 뉴스 상세
    - `GET /api/v1/news/{news_id}/source`를 호출해 원문 출처 정보를 가져옵니다.
@@ -265,7 +270,7 @@ docker run --rm -p 8080:80 -e BACKEND_ORIGIN=host.docker.internal:8000 econmind-
 | `GET /api/v1/keywords/recommended` | 한국어 키워드 10종 |
 | `GET /api/v1/news/search` | 뉴스 10건. 검색어가 1건만 걸리면 같은 topic 기사로 채운다 |
 | `GET /api/v1/news/{id}/source` | 원문 본문 포함 |
-| `GET /api/v1/news/{id}/graph`, `/related` | 프론트가 아직 호출하지 않지만 미리 준비 |
+| `GET /api/v1/news/{id}/graph`, `/related` | 같은 topic 기사를 이웃으로 돌려줍니다 |
 | `POST /api/v1/reports` → `GET /api/v1/reports/{id}` | |
 | `POST /api/v1/strategies` → `GET /api/v1/strategies/{id}` | |
 | `GET /api/v1/thumbnails/{tone}-{id}.svg` | 썸네일을 SVG 로 직접 생성 |
@@ -309,16 +314,13 @@ VITE_API_BASE=http://127.0.0.1:8000 npm run dev
 
 - `GET /api/v1/keywords/recommended`
 - `GET /api/v1/news/search`
+- `GET /api/v1/news/{news_id}/graph`
+- `GET /api/v1/news/{news_id}/related`
 - `GET /api/v1/news/{news_id}/source`
 - `POST /api/v1/reports`
 - `GET /api/v1/reports/{report_id}`
 - `POST /api/v1/strategies`
 - `GET /api/v1/strategies/{strategy_id}`
-
-`apiAdapter.ts`에 어댑터는 있으나 아직 화면에서 호출하지 않는 API:
-
-- `GET /api/v1/news/{news_id}/graph`
-- `GET /api/v1/news/{news_id}/related`
 
 ## 주의 사항
 
