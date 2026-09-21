@@ -633,6 +633,11 @@ export function findKnownNews(id: string): NewsCard | undefined {
   return dynNews.get(id) ?? staticNewsCards.find((news) => news.id === id);
 }
 
+// 로그인이 없으므로 백엔드가 발급하는 세션 쿠키(econmind_sid)로 사용자를 구분한다.
+// credentials: 'include' 가 없으면 브라우저가 쿠키를 싣지도, 저장하지도 않아
+// 매 요청이 새 세션으로 잡히고 사용자별 마인드맵이 동작하지 않는다.
+const CREDENTIALS: RequestCredentials = 'include';
+
 /**
  * 백엔드가 실패 이유를 한국어 detail 로 내려준다. 화면이 그걸 그대로 쓸 수 있게
  * 상태 코드와 함께 실어 나른다.
@@ -672,7 +677,7 @@ async function readDetail(resp: Response): Promise<string | undefined> {
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const resp = await fetch(`${API_V1}${path}`);
+  const resp = await fetch(`${API_V1}${path}`, { credentials: CREDENTIALS });
   if (!resp.ok) throw new ApiError(resp.status, await readDetail(resp), 'GET', path);
   return resp.json() as Promise<T>;
 }
@@ -681,6 +686,7 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(`${API_V1}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: CREDENTIALS,
     body: JSON.stringify(body),
   });
   if (!resp.ok) throw new ApiError(resp.status, await readDetail(resp), 'POST', path);
@@ -700,6 +706,35 @@ export function errorMessage(error: unknown, fallback: string, retryHint?: strin
   if (!retryHint) return fallback;
   const retryable = !(error instanceof ApiError) || error.retryable;
   return retryable ? `${fallback} ${retryHint}` : fallback;
+}
+
+// ── 세션 마인드맵 상태 ────────────────────────────────────────────────────────
+// 백엔드 GET/POST /api/v1/session 계약. 화면 연동은 M2 완료 기준에서 제외돼 있어
+// 여기서는 타입과 호출부만 둔다(마인드맵 알고리즘 적용은 2026-09-19 보류 결정).
+
+export type SessionState = {
+  session_id: string;
+  mindmap: {
+    center_news_id: string;
+    expanded_news_ids: string[];
+    query: string;
+  };
+  viewed_news_ids: string[];
+};
+
+/** 현재 세션 상태를 조회한다. 쿠키가 없으면 백엔드가 새로 발급한다. */
+export async function fetchSession(): Promise<SessionState> {
+  return apiGet<SessionState>('/session');
+}
+
+/** 마인드맵에서 노드를 펼쳤음을 세션에 기록한다. */
+export async function expandMindmapNode(newsId: string): Promise<SessionState> {
+  return apiPost<SessionState>('/session/mindmap/expand', { news_id: newsId });
+}
+
+/** 펼친 노드를 접는다. */
+export async function collapseMindmapNode(newsId: string): Promise<SessionState> {
+  return apiPost<SessionState>('/session/mindmap/collapse', { news_id: newsId });
 }
 
 function pickTone(title: string, index: number): NewsCard['thumbnailTone'] {

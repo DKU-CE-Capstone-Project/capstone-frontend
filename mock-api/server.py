@@ -383,9 +383,16 @@ class Handler(BaseHTTPRequestHandler):
     # npm run dev(5173)에서 이 서버를 직접 부를 때를 위해 열어 둔다.
     # nginx 뒤에서는 동일 출처라 필요 없다.
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # 프론트가 credentials: 'include' 로 부른다(세션 쿠키). 브라우저는 그때
+        # 와일드카드 Origin 을 거부하므로 요청 Origin 을 그대로 돌려준다 —
+        # 실제 백엔드의 CORSMiddleware(allow_credentials=True)도 같은 동작이다.
+        origin = self.headers.get("Origin")
+        self.send_header("Access-Control-Allow-Origin", origin or "*")
+        if origin:
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
     def _send(self, status: int, payload, content_type="application/json") -> None:
         body = payload if isinstance(payload, bytes) else json.dumps(payload, ensure_ascii=False).encode()
