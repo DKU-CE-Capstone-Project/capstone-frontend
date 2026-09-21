@@ -174,10 +174,36 @@ TONE_COLORS = {
     "currency": ("#6a4a8f", "#a689c6"),
 }
 
+# 백엔드는 NCP 분류를 그대로 실어 보내고, 정치·사회 및 분류를 확인하지 못한 기사는
+# 검색 단계에서 제외한다. mock 기사는 전부 경제·산업 계열이라 그에 맞춰 채운다.
+CATEGORIES_BY_TONE = {
+    "ai": ["IT/과학", "경제"],
+    "chip": ["경제", "산업"],
+    "oil": ["경제", "국제"],
+    "defense": ["산업", "경제"],
+    "shipping": ["산업", "경제"],
+    "currency": ["경제", "금융"],
+}
+
+
+def _description(item: dict) -> str:
+    """검색 API 가 주는 기사 설명(NCP description) 자리. 본문 앞부분을 잘라 쓴다.
+
+    summary 는 백엔드가 만든 요약이고 description 은 검색 응답에 실려 오는
+    원문 스니펫이다. 프론트 상세 화면은 description 을 "기사 설명"으로 낸다.
+    """
+    body = item["body"]
+    return body if len(body) <= 160 else body[:159].rstrip() + "…"
+
+
+def _source_url(item: dict) -> str:
+    return f"https://news.example.com/{item['news_id']}"
+
 
 # ── 응답 조립 ────────────────────────────────────────────────────────
 def news_card(item: dict) -> dict:
     return {
+        "description": _description(item),
         "news_id": item["news_id"],
         "title": item["title"],
         "summary": item["summary"],
@@ -185,6 +211,9 @@ def news_card(item: dict) -> dict:
         "source_name": item["source_name"],
         "published_at": _at(item["offset"]),
         "related_stock_names": item["stocks"],
+        "source_url": _source_url(item),
+        "keywords": item["topics"],
+        "categories": CATEGORIES_BY_TONE.get(item["tone"], ["경제"]),
     }
 
 
@@ -337,6 +366,11 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/health", "/api/v1/health"):
             return self._send(200, {"status": "ok", "mode": "mock"})
 
+        # 실제 백엔드는 여기서 MongoDB ping 결과를 낸다(실패 시 503).
+        # mock 은 저장소가 없으니 항상 ok 다.
+        if path == "/ready":
+            return self._send(200, {"status": "ok", "mongodb": "mock"})
+
         if path == "/api/v1/keywords/recommended":
             limit = int(qs.get("limit", ["8"])[0])
             return self._send(200, {
@@ -373,10 +407,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {
                 "news_id": item["news_id"],
                 "source_name": item["source_name"],
-                "source_url": f"https://news.example.com/{item['news_id']}",
+                "source_url": _source_url(item),
                 "published_at": _at(item["offset"]),
                 "original_title": item["title"],
+                "thumbnail_url": f"/api/v1/thumbnails/{item['tone']}-{item['news_id']}.svg",
                 "original_body": item["body"],
+                "description": _description(item),
+                "keywords": item["topics"],
+                "categories": CATEGORIES_BY_TONE.get(item["tone"], ["경제"]),
             })
 
         m = re.fullmatch(r"/api/v1/news/([^/]+)/graph", path)

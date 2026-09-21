@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -16,7 +16,6 @@ import {
   fetchAndCacheCluster,
   fetchAndCacheNewsCluster,
   fetchAndCacheNewsMap,
-  fetchAndCacheNewsSource,
   fetchRecommendedKeywordLabels,
   findKnownNews,
   findOrResolveClusterByQuery,
@@ -166,42 +165,34 @@ function App() {
 
       navigate('newsMap');
     } catch {
-      const fallback = buildFallbackCluster(term);
-      setQuery(term || fallback.query);
-      setActiveClusterId(fallback.id);
-      setCenterNewsId(fallback.mainNewsId);
-      setDetailNewsId(fallback.mainNewsId);
-      setErrorMsg('뉴스 검색 API 호출 실패 — 기본 데이터로 표시합니다.');
+      setQuery(term);
+      setCenterNewsId('');
+      setDetailNewsId('');
+      setErrorMsg('뉴스 검색에 실패했습니다. 잠시 후 다시 검색해 주세요.');
       navigate('newsMap');
     } finally {
       setLoadingLabel(null);
     }
   };
 
-  const openDetail = async (newsId: string) => {
-    setLoadingLabel('원문을 불러오는 중…');
+  const openDetail = (newsId: string) => {
     setErrorMsg(null);
-    try {
-      await fetchAndCacheNewsSource(newsId);
-    } catch {
-      setErrorMsg('원문 링크 API 호출 실패 — 기본 뉴스 정보로 표시합니다.');
-    } finally {
-      setDetailNewsId(newsId);
-      navigate('newsDetail');
-      setLoadingLabel(null);
-    }
+    setDetailNewsId(newsId);
+    if (screen !== 'newsDetail') navigate('newsDetail');
   };
 
   const openReport = async () => {
     setLoadingLabel('리포트를 생성하는 중…');
     setErrorMsg(null);
     try {
-      await createAndCacheReport(activeCluster.id, centerNewsId, activeCluster.relatedNewsIds);
+      const selectedId = screen === 'newsDetail' ? detailNewsId : centerNewsId;
+      const relatedIds = [activeCluster.mainNewsId, ...activeCluster.relatedNewsIds].filter(id => id !== selectedId);
+      await createAndCacheReport(activeCluster.id, selectedId, relatedIds);
+      setCenterNewsId(selectedId);
       setActiveClusterId(activeCluster.id);
       navigate('report');
     } catch {
-      setErrorMsg('리포트 API 호출 실패 — 기본 리포트로 표시합니다.');
-      navigate('report');
+      setErrorMsg('본문 추출 또는 리포트 생성에 실패했습니다. 다시 시도해 주세요.');
     } finally {
       setLoadingLabel(null);
     }
@@ -260,7 +251,21 @@ function App() {
             </ScreenSurface>
           )}
 
-          {screen === 'newsMap' && (
+          {screen === 'newsMap' && !centerNewsId && (
+            <ScreenSurface key="newsMapEmpty" className="map-view">
+              {/* 검색이 실패했거나 그릴 기사가 없을 때. 예전에는 정적 목 데이터를
+                  대신 보여줘서 실패가 성공처럼 보였다. */}
+              <EmptyState
+                title={errorMsg ? '뉴스 검색 실패' : '조건에 맞는 뉴스가 없습니다'}
+                hint={
+                  errorMsg ??
+                  '검색한 20건 중 표시할 네이버 뉴스가 없습니다. 정치·사회 및 분류를 확인하지 못한 기사는 제외됩니다.'
+                }
+              />
+            </ScreenSurface>
+          )}
+
+          {screen === 'newsMap' && centerNewsId && (
             <ScreenSurface key="newsMap" className="map-view">
               <NewsMapView
                 centerNews={centerNews}
@@ -279,6 +284,7 @@ function App() {
                 centerNews={centerNews}
                 detailNews={resolveNews(detailNewsId)}
                 relatedNews={visibleNews}
+                errorMsg={errorMsg}
                 onOpenDetail={openDetail}
                 onFocusNews={focusNews}
                 onOpenReport={openReport}
@@ -306,6 +312,7 @@ function App() {
             onBack={goBack}
             onSearch={() => navigate('home')}
             onReport={openReport}
+            hasNews={Boolean(screen === 'newsDetail' ? detailNewsId : centerNewsId)}
           />
         )}
 
@@ -543,6 +550,7 @@ function DetailView({
   centerNews,
   detailNews,
   relatedNews,
+  errorMsg,
   onOpenDetail,
   onFocusNews,
   onOpenReport,
@@ -550,10 +558,17 @@ function DetailView({
   centerNews: NewsCard;
   detailNews: NewsCard;
   relatedNews: NewsCard[];
+  errorMsg: string | null;
   onOpenDetail: (newsId: string) => void;
   onFocusNews: (newsId: string) => void;
   onOpenReport: () => void;
 }) {
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    panel.current?.scrollTo(0, 0);
+    panel.current?.parentElement?.scrollTo(0, 0);
+  }, [detailNews.id]);
+
   return (
     <>
       <aside className="mini-map">
@@ -569,6 +584,9 @@ function DetailView({
       <motion.article
         className="detail-panel"
         key={detailNews.id}
+        ref={panel}
+        tabIndex={0}
+        aria-label="기사 설명 영역"
         variants={staggerContainer(0.05)}
         initial="enter"
         animate="center"
@@ -586,10 +604,15 @@ function DetailView({
           </motion.div>
 
           <motion.h2 variants={riseVariants}>{detailNews.title}</motion.h2>
-          <motion.p className="lead" variants={riseVariants}>
-            {detailNews.summary}
+          <motion.h3 variants={riseVariants}>기사 설명</motion.h3>
+          <motion.p className="article-body" variants={riseVariants}>
+            {detailNews.summary || '제공된 기사 설명이 없습니다.'}
           </motion.p>
-          <motion.p variants={riseVariants}>{detailNews.mockOriginalBody}</motion.p>
+          {errorMsg && (
+            <motion.p role="alert" variants={riseVariants}>
+              {errorMsg}
+            </motion.p>
+          )}
 
           {detailNews.sourceUrl ? (
             <motion.div className="source-link-card" variants={riseVariants}>
@@ -774,12 +797,14 @@ function BottomControls({
   onBack,
   onSearch,
   onReport,
+  hasNews,
 }: {
   screen: Screen;
   canGoBack: boolean;
   onBack: () => void;
   onSearch: () => void;
   onReport: () => void;
+  hasNews: boolean;
 }) {
   const reportDisabled = screen === 'home' || screen === 'searchResults';
 
@@ -794,7 +819,7 @@ function BottomControls({
       <NavButton onClick={onBack} disabled={!canGoBack} label="뒤로가기">
         <ArrowLeft aria-hidden="true" />
       </NavButton>
-      <NavButton onClick={onReport} disabled={reportDisabled} label="리포트">
+      <NavButton onClick={onReport} disabled={!hasNews || reportDisabled} label="리포트">
         <FileText aria-hidden="true" />
       </NavButton>
       <NavButton onClick={onSearch} label="검색">

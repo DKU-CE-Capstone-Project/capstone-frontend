@@ -737,6 +737,35 @@ p {
   max-width: 665px;
 }
 
+/* "기사 설명" 라벨. main 병합으로 들어온 h3 에는 스타일이 없어 기본값으로 떴다. */
+.detail-panel h3 {
+  max-width: 665px;
+  margin-bottom: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+}
+
+/* 본문 추출을 더 이상 하지 않으므로 이 설명이 상세 화면의 주 텍스트다. */
+.detail-panel .article-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  line-height: 1.85;
+}
+
+/* 다크 테마에서도 읽히도록 리터럴 색상 대신 경고 토큰을 쓴다 */
+.detail-panel .body-unavailable,
+.detail-panel [role="alert"] {
+  padding: 12px 16px;
+  color: var(--text-primary);
+  background: var(--warn-soft);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+}
+
 .source-link-card {
   display: grid;
   gap: var(--space-2);
