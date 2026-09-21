@@ -572,7 +572,9 @@ function graphNodeToNewsCard(node: ApiGraphNode, query: string, index: number): 
   return {
     id: node.news_id,
     title: node.title,
-    source: existing?.source ?? 'News API',
+    // /graph 응답에는 출처가 없다. 캐시에 없으면 비워 둔다 — 'News API' 같은
+    // 문구를 넣으면 화면에서 진짜 언론사 이름처럼 보인다.
+    source: existing?.source ?? '',
     publishedAt: existing?.publishedAt ?? '',
     summary: node.summary,
     mockOriginalBody: existing?.mockOriginalBody ?? '',
@@ -590,7 +592,8 @@ function relatedItemToNewsCard(item: ApiRelatedNewsItem, query: string, index: n
   return {
     id: item.news_id,
     title: item.title,
-    source: existing?.source ?? 'Related News',
+    // /related 응답에도 출처가 없다. 위와 같은 이유로 비워 둔다.
+    source: existing?.source ?? '',
     publishedAt: existing?.publishedAt ?? '',
     summary: item.summary,
     mockOriginalBody: existing?.mockOriginalBody ?? '',
@@ -630,9 +633,47 @@ export function findKnownNews(id: string): NewsCard | undefined {
   return dynNews.get(id) ?? staticNewsCards.find((news) => news.id === id);
 }
 
+/**
+ * 백엔드가 실패 이유를 한국어 detail 로 내려준다. 화면이 그걸 그대로 쓸 수 있게
+ * 상태 코드와 함께 실어 나른다.
+ *
+ * 예) POST /reports 는 404 "정치·사회 기사는 제공하지 않습니다",
+ *     502 "기사 본문을 추출하지 못해...", 503 "기사 분류를 확인하지 못했습니다..."
+ * 를 구분해서 준다. 예전에는 상태 코드만 보고 버려서, 다시 눌러도 절대 안 되는
+ * 404 에도 "다시 시도해 주세요" 가 떴다.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    /** 백엔드가 준 사람이 읽는 메시지. 없으면 undefined. */
+    readonly detail: string | undefined,
+    method: string,
+    path: string,
+  ) {
+    super(`API ${method} ${path} failed with ${status}${detail ? `: ${detail}` : ''}`);
+    this.name = 'ApiError';
+  }
+
+  /** 다시 눌러 볼 만한 실패인지. 404 는 이 기사에 대해 영구적이다. */
+  get retryable(): boolean {
+    return this.status !== 404;
+  }
+}
+
+/** FastAPI 는 오류를 {"detail": "..."} 로 낸다. 검증 실패(422)는 배열이라 거른다. */
+async function readDetail(resp: Response): Promise<string | undefined> {
+  try {
+    const body = await resp.json();
+    const detail = (body as { detail?: unknown })?.detail;
+    return typeof detail === 'string' && detail.trim() ? detail.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const resp = await fetch(`${API_V1}${path}`);
-  if (!resp.ok) throw new Error(`API GET ${path} failed with ${resp.status}`);
+  if (!resp.ok) throw new ApiError(resp.status, await readDetail(resp), 'GET', path);
   return resp.json() as Promise<T>;
 }
 
@@ -642,8 +683,23 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`API POST ${path} failed with ${resp.status}`);
+  if (!resp.ok) throw new ApiError(resp.status, await readDetail(resp), 'POST', path);
   return resp.json() as Promise<T>;
+}
+
+/**
+ * 오류를 화면 문구로 바꾼다.
+ *
+ * 백엔드 메시지가 있으면 그대로 쓴다 — 이유를 가장 정확히 아는 쪽이고,
+ * 필요한 안내(“잠시 후 다시 시도해 주세요”)도 이미 문장에 들어 있다.
+ * 우리 문구로 대신할 때만 `retryHint` 를 덧붙이며, 다시 눌러도 결과가 같은
+ * 실패(404)에는 붙이지 않는다.
+ */
+export function errorMessage(error: unknown, fallback: string, retryHint?: string): string {
+  if (error instanceof ApiError && error.detail) return error.detail;
+  if (!retryHint) return fallback;
+  const retryable = !(error instanceof ApiError) || error.retryable;
+  return retryable ? `${fallback} ${retryHint}` : fallback;
 }
 
 function pickTone(title: string, index: number): NewsCard['thumbnailTone'] {

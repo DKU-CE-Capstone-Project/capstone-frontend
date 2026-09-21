@@ -85,9 +85,16 @@ export function NewsMapCanvas({
 
             const dimmed = hovered !== null && hovered !== node.id;
             const isCenter = node.isCenter;
-            // 원이 작으면 pill이 출처 텍스트를 덮는다(미니맵 중심 196, 연관 132, 모바일 190/124).
-            // 여유가 있는 전체 화면 맵에서만 pill을 쓰고, 나머지는 노드 자체가 상세 버튼이다.
-            const showPill = node.size >= 210;
+            // pill("상세")은 원 안에서 자리를 차지한다. 원이 작으면 출처 텍스트를
+            // 덮으므로 빼고, 그때는 노드 자체가 상세 버튼이 된다. 중심 교체는
+            // pill 이 있는 자리에서만 — 상세로 들어갈 길이 남아 있어야 한다.
+            // 미니맵(compact)은 다른 기사의 상세로 건너뛰는 용도라 항상 제외한다.
+            //
+            // 기준이 지름 210 이었는데, 연관 뉴스가 5~6개면 데스크톱 노드도 201px 로
+            // 줄어 중심 교체와 pill 이 통째로 사라졌다. 실제 백엔드는 /related(FREE
+            // 3건) + /graph 보충으로 보통 5~6개를 주므로, 정상 상황에서 맵 탐색이
+            // 막히는 셈이었다. 모바일(124px)은 예전처럼 노드를 누르면 상세로 간다.
+            const showPill = !compact && node.size >= 160;
             const canFocus = !isCenter && showPill && !!onFocusNews;
 
             return (
@@ -144,7 +151,9 @@ export function NewsMapCanvas({
                     />
                     <span className="node-copy">
                       <strong style={{ fontSize: node.titleFont }}>{news.title}</strong>
-                      <small style={{ fontSize: node.metaFont }}>{news.source}</small>
+                      {news.source && (
+                        <small style={{ fontSize: node.metaFont }}>{news.source}</small>
+                      )}
                       {canFocus && (
                         <span
                           className="node-focus-hint"

@@ -80,6 +80,28 @@ NEWS = [
         "topics": ["반도체", "AI 서버"],
         "offset": 105,
     },
+    {
+        "news_id": "n-ai-005",
+        "title": "HBM 공급 계약 장기화, 메모리 가격 변동성 축소 전망",
+        "summary": "고객사와의 장기 공급 계약 비중이 늘면서 메모리 가격이 분기마다 출렁이던 구조가 완화될 것이라는 분석이 나온다.",
+        "body": "장기 계약은 가격 하단을 받쳐 주지만 상승장에서는 단가 인상을 늦춘다. 증권가는 계약 구조 변화가 실적 변동성을 줄이는 대신 호황기 수익률을 깎는 요인이 될 수 있다고 본다.",
+        "source_name": "서울경제",
+        "tone": "chip",
+        "stocks": ["삼성전자", "SK하이닉스"],
+        "topics": ["반도체", "HBM"],
+        "offset": 140,
+    },
+    {
+        "news_id": "n-ai-006",
+        "title": "데이터센터 냉각 수요 증가, 공조 업체 수주 잔고 확대",
+        "summary": "고집적 AI 서버가 늘면서 액침·수냉 방식 공조 설비 발주가 함께 늘고 있다.",
+        "body": "공조 설비는 전력 인입과 함께 데이터센터 가동 시점을 좌우한다. 업계는 내년 발주가 올해보다 늘 것으로 보면서도, 설계 표준이 아직 정리되지 않아 초기 수주의 수익성은 편차가 크다고 설명한다.",
+        "source_name": "머니투데이",
+        "tone": "defense",
+        "stocks": ["LS ELECTRIC", "HD현대일렉트릭"],
+        "topics": ["AI 서버", "데이터센터", "전력망"],
+        "offset": 175,
+    },
     # ── 원유 · 중동 ──────────────────────────────────────────────
     {
         "news_id": "n-oil-001",
@@ -125,6 +147,17 @@ NEWS = [
         "topics": ["방산", "중동 전황"],
         "offset": 115,
     },
+    {
+        "news_id": "n-oil-005",
+        "title": "정제 마진 반등, 정유사 실적 기대치 상향",
+        "summary": "역내 정기 보수가 겹치면서 정제 마진이 회복돼 정유사 분기 실적 전망이 올라갔다.",
+        "body": "정제 마진은 유가보다 정유사 수익성에 직접적이다. 다만 보수 일정이 끝나는 시점에 공급이 다시 늘면 마진이 되돌아설 수 있어, 추세로 보기에는 이르다는 신중론도 있다.",
+        "source_name": "파이낸셜뉴스",
+        "tone": "oil",
+        "stocks": ["S-Oil", "GS"],
+        "topics": ["원유", "정유", "에너지"],
+        "offset": 150,
+    },
     # ── 환율 · 금리 ──────────────────────────────────────────────
     {
         "news_id": "n-fx-001",
@@ -147,6 +180,17 @@ NEWS = [
         "stocks": ["삼성증권", "미래에셋증권"],
         "topics": ["금리", "환율"],
         "offset": 60,
+    },
+    {
+        "news_id": "n-fx-003",
+        "title": "수입 물가 상승 압력, 환율·유가 동반 영향",
+        "summary": "환율과 국제 유가가 함께 오르며 수입 물가 상승 압력이 커지고 있다는 분석이 나왔다.",
+        "body": "수입 물가는 시차를 두고 소비자 물가로 넘어간다. 원가 부담을 판매가에 반영하기 어려운 업종부터 마진이 눌리기 때문에, 업종별 전가력을 함께 봐야 한다는 조언이 나온다.",
+        "source_name": "아시아경제",
+        "tone": "currency",
+        "stocks": ["대한항공", "CJ제일제당"],
+        "topics": ["환율", "수입 물가", "에너지"],
+        "offset": 95,
     },
 ]
 
@@ -382,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/v1/news/search":
             q = qs.get("q", [""])[0]
-            size = int(qs.get("size", ["10"])[0])
+            size = max(1, min(int(qs.get("size", ["20"])[0]), 50))
             hits = search(q, size)
             return self._send(200, {
                 "news_cards": [news_card(n) for n in hits],
@@ -411,7 +455,9 @@ class Handler(BaseHTTPRequestHandler):
                 "published_at": _at(item["offset"]),
                 "original_title": item["title"],
                 "thumbnail_url": f"/api/v1/thumbnails/{item['tone']}-{item['news_id']}.svg",
-                "original_body": item["body"],
+                # 실제 백엔드는 /source 에서 Diffbot 을 부르지 않는다 — 항상 빈 문자열이다.
+                # 본문 추출은 POST /reports 단계로 옮겨졌다.
+                "original_body": "",
                 "description": _description(item),
                 "keywords": item["topics"],
                 "categories": CATEGORIES_BY_TONE.get(item["tone"], ["경제"]),
@@ -420,17 +466,41 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/v1/news/([^/]+)/graph", path)
         if m:
             item = NEWS_BY_ID.get(m.group(1), NEWS[0])
-            neighbours = [n for n in NEWS if n is not item and set(n["topics"]) & set(item["topics"])][:6]
+            limit = max(1, min(int(qs.get("limit", ["10"])[0]), 30))
+
+            # 실제 백엔드의 이웃 풀은 "같은 검색어로 캐시된 기사"다
+            # (news._related_articles). 그래서 다른 주제의 기사가 섞이지 않는다.
+            # distance 는 제목 토큰 겹침이 0.4 이상이면 1, 아니면 2
+            # (graph_builder._distance). /related 는 FREE 에서 3건만 주므로
+            # 맵의 나머지 노드는 이 응답에서 채워진다.
+            def rank(n: dict) -> tuple:
+                return (-len(set(n["topics"]) & set(item["topics"])), n["offset"])
+
+            neighbours = sorted(
+                (n for n in NEWS if n is not item and set(n["topics"]) & set(item["topics"])),
+                key=rank,
+            )[:limit]
+            distances = {
+                n["news_id"]: 1 if len(set(n["topics"]) & set(item["topics"])) >= 2 else 2
+                for n in neighbours
+            }
             node = lambda n, d, c=False: {  # noqa: E731
                 "news_id": n["news_id"], "title": n["title"], "summary": n["summary"],
                 "distance": d, "is_center": c,
             }
             return self._send(200, {
                 "center_node": node(item, 0, True),
-                "nodes": [node(item, 0, True), *[node(n, 1) for n in neighbours]],
+                "nodes": [
+                    node(item, 0, True),
+                    *[node(n, distances[n["news_id"]]) for n in neighbours],
+                ],
                 "edges": [
-                    {"source": item["news_id"], "target": n["news_id"],
-                     "relation_type": "same_topic", "distance": 1}
+                    {
+                        "source": item["news_id"],
+                        "target": n["news_id"],
+                        "relation_type": "same_topic" if distances[n["news_id"]] == 1 else "related_topic",
+                        "distance": distances[n["news_id"]],
+                    }
                     for n in neighbours
                 ],
             })
@@ -438,14 +508,30 @@ class Handler(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/v1/news/([^/]+)/related", path)
         if m:
             item = NEWS_BY_ID.get(m.group(1), NEWS[0])
-            limit = int(qs.get("limit", ["3"])[0])
-            neighbours = [n for n in NEWS if n is not item and set(n["topics"]) & set(item["topics"])][:limit]
+            limit = int(qs.get("limit", ["10"])[0])
+            tier = qs.get("tier", ["FREE"])[0]
+            include_score = qs.get("include_score", ["false"])[0].lower() == "true"
+
+            # 실제 백엔드는 FREE/BASIC 에서 limit 을 3 으로 깎고 relevance_score 를
+            # 주지 않는다. 그대로 흉내 내지 않으면 맵이 /related 만으로 다 차서,
+            # 프론트의 graph 이웃 보충 경로가 mock 에서 한 번도 실행되지 않는다.
+            is_paid = tier == "PAID"
+            effective_limit = limit if is_paid else min(limit, 3)
+            neighbours = [
+                n for n in NEWS if n is not item and set(n["topics"]) & set(item["topics"])
+            ][:effective_limit]
+
+            def score(i: int):
+                if not (is_paid or include_score):
+                    return None
+                return round(0.9 - 0.07 * i, 2) if is_paid else None
+
             return self._send(200, {
                 "related_news": [
                     {
                         "news_id": n["news_id"], "title": n["title"], "summary": n["summary"],
                         "thumbnail_url": f"/api/v1/thumbnails/{n['tone']}-{n['news_id']}.svg",
-                        "relevance_score": round(0.9 - 0.07 * i, 2),
+                        "relevance_score": score(i),
                         "distance": 1,
                     }
                     for i, n in enumerate(neighbours)

@@ -13,6 +13,7 @@ import { clusters, type IssueCluster, type NewsCard, type Report } from './data/
 import {
   buildFallbackCluster,
   createAndCacheReport,
+  errorMessage,
   fetchAndCacheCluster,
   fetchAndCacheNewsCluster,
   fetchAndCacheNewsMap,
@@ -164,11 +165,11 @@ function App() {
       }
 
       navigate('newsMap');
-    } catch {
+    } catch (error) {
       setQuery(term);
       setCenterNewsId('');
       setDetailNewsId('');
-      setErrorMsg('뉴스 검색에 실패했습니다. 잠시 후 다시 검색해 주세요.');
+      setErrorMsg(errorMessage(error, '뉴스 검색에 실패했습니다.', '잠시 후 다시 검색해 주세요.'));
       navigate('newsMap');
     } finally {
       setLoadingLabel(null);
@@ -191,8 +192,10 @@ function App() {
       setCenterNewsId(selectedId);
       setActiveClusterId(activeCluster.id);
       navigate('report');
-    } catch {
-      setErrorMsg('본문 추출 또는 리포트 생성에 실패했습니다. 다시 시도해 주세요.');
+    } catch (error) {
+      // 백엔드가 이유를 구분해 준다 — 404 정치·사회 기사, 502 본문 추출 실패,
+      // 503 분류 확인 실패·저장 실패.
+      setErrorMsg(errorMessage(error, '리포트를 만들지 못했습니다.', '잠시 후 다시 시도해 주세요.'));
     } finally {
       setLoadingLabel(null);
     }
