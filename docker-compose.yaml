@@ -15,7 +15,7 @@ services:
         VITE_API_BASE: ""
     image: econmind-frontend:dev
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     environment:
       # 진짜 백엔드를 호스트에서 돌리는 중이라면 host.docker.internal:8000 으로 바꾼다
       BACKEND_ORIGIN: econmind-api:8000
@@ -30,8 +30,10 @@ services:
     build:
       context: ./mock-api
     image: econmind-mock-api:dev
+    environment:
+      MOCK_API_HOST: 0.0.0.0  # 컨테이너 간 통신에는 모든 컨테이너 인터페이스에서 수신해야 한다
     ports:
       # 프론트를 npm run dev 로 돌리면서 이 mock 만 붙일 때 쓴다
       #   VITE_API_BASE=http://127.0.0.1:8000 npm run dev
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     mem_limit: 64m

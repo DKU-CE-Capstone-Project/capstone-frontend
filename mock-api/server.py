@@ -14,6 +14,7 @@ anthropic, trafilatura, lxml 등을 설치해야 해서 프론트만 만질 때�
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8000
+HOST = os.environ.get("MOCK_API_HOST") or "127.0.0.1"
 
 # ── 더미 데이터 ──────────────────────────────────────────────────────
 # 프론트의 hasBackendFallbackText()는 본문에 "AI 분석 준비 중",
@@ -591,4 +593,4 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"[mock] econmind mock API on :{PORT} — {len(NEWS)} articles", flush=True)
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
