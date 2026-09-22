@@ -34,3 +34,6 @@ jobs:
 
       - name: Type check and build
         run: npm run build
+
+      - name: Check local Compose port bindings
+        run: docker compose config --format json | python3 scripts/check-local-compose.py

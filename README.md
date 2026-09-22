@@ -271,7 +271,7 @@ compose 없이 직접 빌드·실행할 수도 있다.
 
 ```bash
 docker build --build-arg VITE_API_BASE="" -t econmind-frontend:dev .
-docker run --rm -p 8080:80 -e BACKEND_ORIGIN=host.docker.internal:8000 econmind-frontend:dev
+docker run --rm -p 127.0.0.1:8080:80 -e BACKEND_ORIGIN=host.docker.internal:8000 econmind-frontend:dev
 ```
 
 ## mock API (`mock-api/`)
@@ -305,6 +305,8 @@ docker run --rm -p 8080:80 -e BACKEND_ORIGIN=host.docker.internal:8000 econmind-
 docker compose up -d econmind-api        # 또는: python3 mock-api/server.py
 VITE_API_BASE=http://127.0.0.1:8000 npm run dev
 ```
+
+두 실행 방식 모두 호스트에서는 127.0.0.1:8000으로만 접근한다. Compose 안의 mock API는 프론트엔드 컨테이너와 통신하도록 컨테이너 내부에서 수신한다.
 
 ### 주의
 
