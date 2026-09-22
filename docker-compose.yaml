@@ -1,0 +1,37 @@
+# 프론트엔드 UI 확인용 스택. 전체 스택(진짜 백엔드·Mongo·NATS·Redis)은
+# capstone-deploy 저장소의 compose 를 쓸 것.
+#
+#   docker compose up --build          → http://localhost:8080  (mock API 포함)
+#   docker compose up --build frontend → 프론트만. /api/* 는 502, 화면은 로컬 fallback
+#
+# mock API 는 서비스명을 econmind-api 로 맞춰 뒀다. 프론트 이미지의 기본값
+# BACKEND_ORIGIN=econmind-api:8000 이 그대로 맞아떨어지므로 추가 설정이 필요 없다.
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        # 빈 값 → 프론트가 동일 출처로 호출 → 아래 nginx 가 백엔드로 프록시
+        VITE_API_BASE: ""
+    image: econmind-frontend:dev
+    ports:
+      - "8080:80"
+    environment:
+      # 진짜 백엔드를 호스트에서 돌리는 중이라면 host.docker.internal:8000 으로 바꾼다
+      BACKEND_ORIGIN: econmind-api:8000
+    extra_hosts:
+      # Linux 에서 host.docker.internal 을 쓰려면 필요하다 (macOS/Windows 는 기본 제공)
+      - "host.docker.internal:host-gateway"
+    mem_limit: 128m
+
+  # 프론트 UI 작업용 더미 API. capstone-backend 의 /api/v1 스키마를 흉내 낸다.
+  # 실제 백엔드 동작을 검증하려면 이걸 쓰지 말고 capstone-deploy 의 compose 를 쓸 것.
+  econmind-api:
+    build:
+      context: ./mock-api
+    image: econmind-mock-api:dev
+    ports:
+      # 프론트를 npm run dev 로 돌리면서 이 mock 만 붙일 때 쓴다
+      #   VITE_API_BASE=http://127.0.0.1:8000 npm run dev
+      - "8000:8000"
+    mem_limit: 64m

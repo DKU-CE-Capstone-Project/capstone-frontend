@@ -1,0 +1,301 @@
+/**
+ * 디자인 토큰 — 라이트/다크 테마.
+ *
+ * 색은 반드시 이 파일의 변수로만 참조한다. 컴포넌트 CSS에 리터럴 색상값(#rrggbb)을
+ * 직접 쓰지 않는다. 테마는 <html data-theme="light|dark">로 전환하며,
+ * 속성이 없으면 OS 설정(prefers-color-scheme)을 따른다.
+ *
+ * 등락 색상은 한국 증시 관례를 따른다 — 상승=빨강, 하락=파랑.
+ * (서구권 관례인 상승=초록과 반대이므로 수정 시 주의)
+ */
+
+:root {
+  /* ── 타이포그래피 ─────────────────────────────────────────────── */
+  --font-sans:
+    Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont,
+    "Apple SD Gothic Neo", "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 28px;
+  --text-3xl: 34px;
+
+  --leading-tight: 1.24;
+  --leading-snug: 1.4;
+  --leading-normal: 1.6;
+  --leading-relaxed: 1.72;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-black: 800;
+
+  /* ── 간격 (4px 배수) ──────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── 모서리 ───────────────────────────────────────────────────── */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-full: 999px;
+
+  /* ── 모션 ─────────────────────────────────────────────────────── */
+  --dur-instant: 90ms;
+  --dur-fast: 160ms;
+  --dur-base: 240ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── 레이어 ───────────────────────────────────────────────────── */
+  --z-map-edges: 1;
+  --z-map-nodes: 2;
+  --z-panel: 10;
+  --z-header: 20;
+  --z-nav: 30;
+  --z-overlay: 100;
+}
+
+/* ══ 라이트 테마 (기본) ═══════════════════════════════════════════ */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* 표면 */
+  --bg-canvas: #eef0f4;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #f2f4f7;
+  --bg-inset: #e7eaf0;
+  --bg-overlay: rgba(238, 240, 244, 0.78);
+  --bg-scrim: rgba(12, 14, 20, 0.44);
+
+  /* 텍스트 */
+  --text-primary: #15181f;
+  --text-secondary: #525a67;
+  --text-tertiary: #7d8695;
+  --text-inverse: #ffffff;
+  --text-on-brand: #ffffff;
+
+  /* 테두리 */
+  --border-subtle: #e6e9ee;
+  --border-default: #d5dae2;
+  --border-strong: #adb5c2;
+
+  /* 브랜드 — 바이올렛 인디고 (AI/분석) */
+  --brand: #5346d4;
+  --brand-hover: #4438b4;
+  --brand-active: #392f99;
+  --brand-fg: #4438b4;
+  --brand-soft: #edebfc;
+  --brand-soft-hover: #e0dcfa;
+  --brand-border: #c7c0f5;
+
+  /* 액센트 — 시안 (맵 엣지·하이라이트) */
+  --accent: #0e8fab;
+  --accent-soft: #e2f4f8;
+  --accent-border: #a8dbe6;
+
+  /* 등락 (한국 증시 관례: 상승=빨강, 하락=파랑) */
+  --up: #cf2f38;
+  --up-soft: #fdecec;
+  --down: #2560d8;
+  --down-soft: #e9f0fd;
+  --mixed: #b06f00;
+  --mixed-soft: #fdf2df;
+
+  /* 상태 */
+  --warn: #9a6a00;
+  --warn-soft: #fdf3dc;
+  --warn-border: #ecd08a;
+  --danger: #c02a30;
+  --danger-soft: #fdecec;
+  --danger-border: #f0b6b8;
+
+  /* 맵 */
+  --map-edge: #b2bac6;
+  --map-edge-active: var(--accent);
+  --node-bg: #edf0f6;
+  --node-border: rgba(21, 24, 31, 0.13);
+  --node-bg-center: #e3e8f2;
+
+  /* 포커스 */
+  --focus-ring: var(--brand);
+  --focus-ring-offset: var(--bg-surface);
+
+  /* 그림자 */
+  --shadow-sm: 0 1px 2px rgba(15, 18, 25, 0.06), 0 1px 1px rgba(15, 18, 25, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 18, 25, 0.08), 0 1px 3px rgba(15, 18, 25, 0.05);
+  --shadow-lg: 0 12px 28px rgba(15, 18, 25, 0.12), 0 4px 8px rgba(15, 18, 25, 0.06);
+  --shadow-xl: 0 24px 64px rgba(15, 18, 25, 0.14), 0 8px 16px rgba(15, 18, 25, 0.07);
+  --shadow-node: 0 10px 24px rgba(15, 18, 25, 0.1);
+  --shadow-node-hover: 0 18px 40px rgba(15, 18, 25, 0.18);
+
+  /* 썸네일 톤 그라디언트 */
+  --tone-ai: linear-gradient(135deg, #1d8ba4, #59c2b8);
+  --tone-chip: linear-gradient(135deg, #4a56a8, #8b93d4);
+  --tone-oil: linear-gradient(135deg, #a8651b, #d69a44);
+  --tone-defense: linear-gradient(135deg, #46693f, #86a878);
+  --tone-shipping: linear-gradient(135deg, #2f6a8c, #74a6c4);
+  --tone-currency: linear-gradient(135deg, #6a4a8f, #a689c6);
+}
+
+/* ══ 다크 테마 ════════════════════════════════════════════════════ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-canvas: #090b10;
+  --bg-surface: #11141b;
+  --bg-elevated: #1a1e28;
+  --bg-sunken: #151922;
+  --bg-inset: #1f2430;
+  --bg-overlay: rgba(9, 11, 16, 0.78);
+  --bg-scrim: rgba(0, 0, 0, 0.62);
+
+  --text-primary: #eef0f5;
+  --text-secondary: #a4acbb;
+  --text-tertiary: #737d8d;
+  --text-inverse: #11141b;
+  --text-on-brand: #ffffff;
+
+  --border-subtle: #212633;
+  --border-default: #2d3442;
+  --border-strong: #454f61;
+
+  --brand: #7b6dfa;
+  --brand-hover: #8d80ff;
+  --brand-active: #9c90ff;
+  --brand-fg: #a79cff;
+  --brand-soft: #1e1a3d;
+  --brand-soft-hover: #272252;
+  --brand-border: #3b3378;
+
+  --accent: #35c2de;
+  --accent-soft: #10303a;
+  --accent-border: #1d5c6e;
+
+  --up: #ff6b70;
+  --up-soft: #34181b;
+  --down: #6f9dff;
+  --down-soft: #16233f;
+  --mixed: #edaa47;
+  --mixed-soft: #332614;
+
+  --warn: #e8b55c;
+  --warn-soft: #2e2413;
+  --warn-border: #574325;
+  --danger: #ff6b70;
+  --danger-soft: #32171a;
+  --danger-border: #5e2b2e;
+
+  --map-edge: #3a4354;
+  --map-edge-active: var(--accent);
+  --node-bg: #1c212c;
+  --node-border: rgba(255, 255, 255, 0.08);
+  --node-bg-center: #232936;
+
+  --focus-ring: var(--brand-fg);
+  --focus-ring-offset: var(--bg-surface);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.45);
+  --shadow-node: 0 10px 24px rgba(0, 0, 0, 0.5);
+  --shadow-node-hover: 0 18px 40px rgba(0, 0, 0, 0.62);
+
+  --tone-ai: linear-gradient(135deg, #0f5d70, #2f9c94);
+  --tone-chip: linear-gradient(135deg, #343d7d, #5d66a8);
+  --tone-oil: linear-gradient(135deg, #7a4712, #ad7a32);
+  --tone-defense: linear-gradient(135deg, #304a2b, #5c7a52);
+  --tone-shipping: linear-gradient(135deg, #1f4a63, #4c7d99);
+  --tone-currency: linear-gradient(135deg, #4a3266, #7a6199);
+}
+
+/* OS 설정 추종 — data-theme이 명시되지 않았을 때만 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --bg-canvas: #090b10;
+    --bg-surface: #11141b;
+    --bg-elevated: #1a1e28;
+    --bg-sunken: #151922;
+    --bg-inset: #1f2430;
+    --bg-overlay: rgba(9, 11, 16, 0.78);
+    --bg-scrim: rgba(0, 0, 0, 0.62);
+
+    --text-primary: #eef0f5;
+    --text-secondary: #a4acbb;
+    --text-tertiary: #737d8d;
+    --text-inverse: #11141b;
+
+    --border-subtle: #212633;
+    --border-default: #2d3442;
+    --border-strong: #454f61;
+
+    --brand: #7b6dfa;
+    --brand-hover: #8d80ff;
+    --brand-active: #9c90ff;
+    --brand-fg: #a79cff;
+    --brand-soft: #1e1a3d;
+    --brand-soft-hover: #272252;
+    --brand-border: #3b3378;
+
+    --accent: #35c2de;
+    --accent-soft: #10303a;
+    --accent-border: #1d5c6e;
+
+    --up: #ff6b70;
+    --up-soft: #34181b;
+    --down: #6f9dff;
+    --down-soft: #16233f;
+    --mixed: #edaa47;
+    --mixed-soft: #332614;
+
+    --warn: #e8b55c;
+    --warn-soft: #2e2413;
+    --warn-border: #574325;
+    --danger: #ff6b70;
+    --danger-soft: #32171a;
+    --danger-border: #5e2b2e;
+
+    --map-edge: #3a4354;
+    --node-bg: #1c212c;
+    --node-border: rgba(255, 255, 255, 0.08);
+    --node-bg-center: #232936;
+
+    --focus-ring: var(--brand-fg);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.4);
+    --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6), 0 8px 16px rgba(0, 0, 0, 0.45);
+    --shadow-node: 0 10px 24px rgba(0, 0, 0, 0.5);
+    --shadow-node-hover: 0 18px 40px rgba(0, 0, 0, 0.62);
+
+    --tone-ai: linear-gradient(135deg, #0f5d70, #2f9c94);
+    --tone-chip: linear-gradient(135deg, #343d7d, #5d66a8);
+    --tone-oil: linear-gradient(135deg, #7a4712, #ad7a32);
+    --tone-defense: linear-gradient(135deg, #304a2b, #5c7a52);
+    --tone-shipping: linear-gradient(135deg, #1f4a63, #4c7d99);
+    --tone-currency: linear-gradient(135deg, #4a3266, #7a6199);
+  }
+}

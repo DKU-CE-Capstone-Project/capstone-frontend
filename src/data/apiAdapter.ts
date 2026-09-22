@@ -204,16 +204,48 @@ export async function fetchAndCacheCluster(term: string): Promise<IssueCluster> 
     return dynClusters.get(clusterId)!;
   }
 
-  const recommendedKeywords = await fetchRecommendedKeywordLabels(10).catch(() => []);
-  const keywords = unique([trimmed, ...recommendedKeywords]).slice(0, 11);
+  // 추천 키워드 호출 실패를 여기서 삼키면 안 된다.
+  // 예전에는 .catch(() => [])로 흡수해 "검색어 1개"짜리 클러스터를 정상 반환했고,
+  // 호출부의 try/catch가 발동하지 않아 백엔드가 없을 때 키워드 맵에
+  // 중심 노드 하나만 그려졌다. 실패는 호출부로 넘겨 폴백을 타게 한다.
+  const recommendedKeywords = await fetchRecommendedKeywordLabels(10);
+  const keywords = unique([trimmed, ...recommendedKeywords]);
+
+  if (keywords.length <= 1) {
+    throw new Error('추천 키워드가 비어 있어 키워드 맵을 만들 수 없습니다.');
+  }
 
   const cluster: IssueCluster = {
     id: clusterId,
     query: trimmed,
     mainNewsId: '',
     relatedNewsIds: [],
-    recommendedKeywords: keywords.length > 0 ? keywords : staticClusters[0].recommendedKeywords,
+    recommendedKeywords: keywords,
     reportId: `${clusterId}-report-placeholder`,
+  };
+
+  dynClusters.set(clusterId, cluster);
+  return cluster;
+}
+
+/**
+ * API가 실패했을 때 쓰는 로컬 대체 클러스터.
+ *
+ * `findOrResolveClusterByQuery`를 그대로 쓰면 매칭되지 않는 검색어는
+ * staticClusters[0]("중동 전황")이 되어 중심 노드가 사용자의 검색어와
+ * 무관해진다. 검색어는 중심에 남기고 키워드만 로컬 데이터로 채운다.
+ */
+export function buildFallbackCluster(term: string): IssueCluster {
+  const trimmed = term.trim();
+  if (!trimmed) return staticClusters[0];
+
+  const base = findOrResolveClusterByQuery(trimmed);
+  const clusterId = `fallback-${slugify(trimmed)}`;
+  const cluster: IssueCluster = {
+    ...base,
+    id: clusterId,
+    query: trimmed,
+    recommendedKeywords: unique([trimmed, ...base.recommendedKeywords]),
   };
 
   dynClusters.set(clusterId, cluster);
@@ -245,36 +277,57 @@ export async function fetchAndCacheNewsCluster(term: string): Promise<IssueClust
   });
 }
 
+/**
+ * 중심 뉴스의 "이웃"을 그래프 API 로 가져와 클러스터를 다시 구성한다.
+ *
+ * `/news/search` 결과는 검색어에 걸린 기사라 서로 연관이 없을 수 있다.
+ * 뉴스맵이 보여줘야 하는 건 "이 기사와 이어진 기사"이므로 related/graph 를 쓴다.
+ *
+ * related 를 먼저 쓰고 모자라면 graph 의 이웃으로 채운다. 둘 다 distance 를
+ * 주므로 가까운 것부터 앞에 둔다 — 맵은 상한을 넘는 노드를 잘라내므로
+ * 순서가 곧 우선순위다.
+ *
+ * limit 기본값은 맵이 그릴 수 있는 연관 노드 수(MAX_RELATED_NODES)와 맞춰 둔 값이다.
+ * 레이아웃 모듈을 데이터 어댑터가 import 하지 않도록 호출부에서 넘긴다.
+ */
 export async function fetchAndCacheNewsMap(
   newsId: string,
   currentClusterId: string,
+  limit = 6,
 ): Promise<IssueCluster> {
   const currentCluster = resolveCluster(currentClusterId);
   const [graphData, relatedData] = await Promise.all([
     apiGet<ApiGraphResponse>(
-      `/news/${encodeURIComponent(newsId)}/graph?depth=2&limit=10&include_distance=true`,
+      `/news/${encodeURIComponent(newsId)}/graph?depth=2&limit=${limit * 2}&include_distance=true`,
     ),
     apiGet<ApiRelatedResponse>(
-      `/news/${encodeURIComponent(newsId)}/related?limit=3&tier=FREE`,
+      `/news/${encodeURIComponent(newsId)}/related?limit=${limit}&tier=FREE`,
     ),
   ]);
 
-  const centerCard = graphNodeToNewsCard(graphData.center_node, currentCluster.query, 0);
-  cacheNewsCard(centerCard);
+  cacheNewsCard(graphNodeToNewsCard(graphData.center_node, currentCluster.query, 0));
 
-  const relatedIds = relatedData.related_news.map((item, index) => {
-    const card = relatedItemToNewsCard(item, currentCluster.query, index + 1);
-    cacheNewsCard(card);
-    return card.id;
-  });
+  const relatedIds: string[] = [];
 
-  if (relatedIds.length < 3) {
-    for (const node of graphData.nodes) {
-      if (node.news_id === newsId || relatedIds.includes(node.news_id)) continue;
+  [...relatedData.related_news]
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, limit)
+    .forEach((item, index) => {
+      const card = relatedItemToNewsCard(item, currentCluster.query, index + 1);
+      cacheNewsCard(card);
+      relatedIds.push(card.id);
+    });
+
+  if (relatedIds.length < limit) {
+    const neighbours = graphData.nodes
+      .filter((node) => node.news_id !== newsId && !relatedIds.includes(node.news_id))
+      .sort((a, b) => a.distance - b.distance);
+
+    for (const node of neighbours) {
       const card = graphNodeToNewsCard(node, currentCluster.query, relatedIds.length + 1);
       cacheNewsCard(card);
       relatedIds.push(card.id);
-      if (relatedIds.length >= 3) break;
+      if (relatedIds.length >= limit) break;
     }
   }
 
@@ -383,6 +436,61 @@ function cacheSearchAsCluster({
   return cluster;
 }
 
+const RISK_LABEL: Record<string, string> = { low: '보수적', medium: '중립적', high: '공격적' };
+const PERIOD_LABEL: Record<string, string> = { short: '단기', mid: '중기', long: '장기' };
+
+/**
+ * 매매 의견 → 카드 색상. 상승=빨강, 하락=파랑인 한국 증시 관례를 따른다
+ * (design/tokens.css 의 --up / --down).
+ */
+const ACTION_META: Record<string, { label: string; direction: 'up' | 'down' | 'mixed' }> = {
+  buy: { label: '매수', direction: 'up' },
+  sell: { label: '매도', direction: 'down' },
+  hold: { label: '보유', direction: 'mixed' },
+  watch: { label: '관망', direction: 'mixed' },
+};
+
+function label(map: Record<string, string>, key: string): string {
+  return map[key] ?? key;
+}
+
+/**
+ * 종목 카드는 전략 응답의 strategy_items 로 만든다.
+ *
+ * 이전 구현은 related_stocks(문자열 배열)만 보고 카드를 만들면서
+ * 모든 카드에 같은 market_impact 를 복사해 넣고 symbol 과 name 에 같은 값을 넣었다.
+ * 종목이 3개면 같은 문장이 3번 반복됐고 direction 도 늘 'mixed' 라 등락 색상이
+ * 아무 의미가 없었다. 정작 strategy_items 에는 ticker · stock_name · action · reason 이
+ * 다 들어 있는데 watchlist 에 쓸 이름만 뽑고 나머지를 버리고 있었다.
+ */
+function buildStockImpacts(
+  apiReport: ApiReportResponse,
+  strategy: ApiStrategyResponse | null,
+): Report['stockImpacts'] {
+  if (strategy && strategy.strategy_items.length > 0) {
+    return strategy.strategy_items.map((item) => {
+      const meta = ACTION_META[item.action] ?? ACTION_META.watch;
+      const name = item.stock_name || item.ticker;
+      return {
+        // 백엔드가 티커 없이 종목명만 줄 때가 있다. 같은 값을 두 번 쓰지 않는다.
+        symbol: item.ticker && item.ticker !== name ? item.ticker : '',
+        name,
+        impact: item.reason,
+        direction: meta.direction,
+        actionLabel: meta.label,
+      };
+    });
+  }
+
+  // 전략이 없으면 종목명만 나열한다. 같은 문장을 카드마다 반복하지 않는다.
+  return apiReport.related_stocks.map((stock) => ({
+    symbol: '',
+    name: stock,
+    impact: '',
+    direction: 'mixed' as const,
+  }));
+}
+
 function mapApiReport(
   apiReport: ApiReportResponse,
   clusterId: string,
@@ -394,19 +502,15 @@ function mapApiReport(
     title: apiReport.title,
     eventSummary: apiReport.summary || apiReport.event_analysis,
     marketImpact: apiReport.market_impact,
-    stockImpacts: apiReport.related_stocks.map((stock) => ({
-      symbol: stock,
-      name: stock,
-      impact: apiReport.market_impact,
-      direction: 'mixed',
-    })),
+    stockImpacts: buildStockImpacts(apiReport, strategy),
     riskFactors: apiReport.risk_factors,
     strategySummary: strategy
       ? {
-          stance: `전략 ${strategy.risk}`,
+          // 예전에는 `전략 ${strategy.risk}` 라서 화면에 "전략 medium" 으로 찍혔다
+          stance: `${label(PERIOD_LABEL, strategy.period)} · ${label(RISK_LABEL, strategy.risk)} 전략`,
           rationale: strategy.strategy_summary,
           watchlist: strategy.strategy_items.map((item) => item.stock_name || item.ticker),
-          riskWarning: `예상 수익률 ${strategy.expected_return}%, 기간 ${strategy.period}`,
+          riskWarning: `예상 수익률 ${strategy.expected_return}% · ${label(PERIOD_LABEL, strategy.period)} 기준`,
         }
       : {
           stance: '전략 생성 대기',
@@ -468,7 +572,9 @@ function graphNodeToNewsCard(node: ApiGraphNode, query: string, index: number): 
   return {
     id: node.news_id,
     title: node.title,
-    source: existing?.source ?? 'News API',
+    // /graph 응답에는 출처가 없다. 캐시에 없으면 비워 둔다 — 'News API' 같은
+    // 문구를 넣으면 화면에서 진짜 언론사 이름처럼 보인다.
+    source: existing?.source ?? '',
     publishedAt: existing?.publishedAt ?? '',
     summary: node.summary,
     mockOriginalBody: existing?.mockOriginalBody ?? '',
@@ -486,7 +592,8 @@ function relatedItemToNewsCard(item: ApiRelatedNewsItem, query: string, index: n
   return {
     id: item.news_id,
     title: item.title,
-    source: existing?.source ?? 'Related News',
+    // /related 응답에도 출처가 없다. 위와 같은 이유로 비워 둔다.
+    source: existing?.source ?? '',
     publishedAt: existing?.publishedAt ?? '',
     summary: item.summary,
     mockOriginalBody: existing?.mockOriginalBody ?? '',
@@ -518,7 +625,11 @@ function cacheNewsCard(next: NewsCard): void {
   dynNews.set(next.id, existing ? mergeNewsCard(existing, next) : next);
 }
 
-function findKnownNews(id: string): NewsCard | undefined {
+/**
+ * resolveNews 와 달리 모르는 id 에 staticNewsCards[0] 을 돌려주지 않는다.
+ * "조용히 엉뚱한 뉴스"를 만들면 안 되는 자리에서 쓴다.
+ */
+export function findKnownNews(id: string): NewsCard | undefined {
   return dynNews.get(id) ?? staticNewsCards.find((news) => news.id === id);
 }
 
@@ -527,9 +638,47 @@ function findKnownNews(id: string): NewsCard | undefined {
 // 매 요청이 새 세션으로 잡히고 사용자별 마인드맵이 동작하지 않는다.
 const CREDENTIALS: RequestCredentials = 'include';
 
+/**
+ * 백엔드가 실패 이유를 한국어 detail 로 내려준다. 화면이 그걸 그대로 쓸 수 있게
+ * 상태 코드와 함께 실어 나른다.
+ *
+ * 예) POST /reports 는 404 "정치·사회 기사는 제공하지 않습니다",
+ *     502 "기사 본문을 추출하지 못해...", 503 "기사 분류를 확인하지 못했습니다..."
+ * 를 구분해서 준다. 예전에는 상태 코드만 보고 버려서, 다시 눌러도 절대 안 되는
+ * 404 에도 "다시 시도해 주세요" 가 떴다.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    /** 백엔드가 준 사람이 읽는 메시지. 없으면 undefined. */
+    readonly detail: string | undefined,
+    method: string,
+    path: string,
+  ) {
+    super(`API ${method} ${path} failed with ${status}${detail ? `: ${detail}` : ''}`);
+    this.name = 'ApiError';
+  }
+
+  /** 다시 눌러 볼 만한 실패인지. 404 는 이 기사에 대해 영구적이다. */
+  get retryable(): boolean {
+    return this.status !== 404;
+  }
+}
+
+/** FastAPI 는 오류를 {"detail": "..."} 로 낸다. 검증 실패(422)는 배열이라 거른다. */
+async function readDetail(resp: Response): Promise<string | undefined> {
+  try {
+    const body = await resp.json();
+    const detail = (body as { detail?: unknown })?.detail;
+    return typeof detail === 'string' && detail.trim() ? detail.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const resp = await fetch(`${API_V1}${path}`, { credentials: CREDENTIALS });
-  if (!resp.ok) throw new Error(`API GET ${path} failed with ${resp.status}`);
+  if (!resp.ok) throw new ApiError(resp.status, await readDetail(resp), 'GET', path);
   return resp.json() as Promise<T>;
 }
 
@@ -540,8 +689,23 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
     credentials: CREDENTIALS,
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`API POST ${path} failed with ${resp.status}`);
+  if (!resp.ok) throw new ApiError(resp.status, await readDetail(resp), 'POST', path);
   return resp.json() as Promise<T>;
+}
+
+/**
+ * 오류를 화면 문구로 바꾼다.
+ *
+ * 백엔드 메시지가 있으면 그대로 쓴다 — 이유를 가장 정확히 아는 쪽이고,
+ * 필요한 안내(“잠시 후 다시 시도해 주세요”)도 이미 문장에 들어 있다.
+ * 우리 문구로 대신할 때만 `retryHint` 를 덧붙이며, 다시 눌러도 결과가 같은
+ * 실패(404)에는 붙이지 않는다.
+ */
+export function errorMessage(error: unknown, fallback: string, retryHint?: string): string {
+  if (error instanceof ApiError && error.detail) return error.detail;
+  if (!retryHint) return fallback;
+  const retryable = !(error instanceof ApiError) || error.retryable;
+  return retryable ? `${fallback} ${retryHint}` : fallback;
 }
 
 // ── 세션 마인드맵 상태 ────────────────────────────────────────────────────────
