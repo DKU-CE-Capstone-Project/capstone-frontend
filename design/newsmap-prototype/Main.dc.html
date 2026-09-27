@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>검색창</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+.app{--surface:#ffffff;--elevated:#ffffff;--sunken:#f2f4f7;--inset:#e7eaf0;--t1:#15181f;--t2:#525a67;--t3:#7d8695;--on-brand:#ffffff;--bs:#e6e9ee;--bd:#d5dae2;--brand:#5346d4;--brand-hover:#4438b4;--brand-fg:#4438b4;--brand-soft:#edebfc;--brand-border:#c7c0f5;--accent:#0e8fab;--accent-border:#a8dbe6;--sh-sm:0 1px 2px rgba(15,18,25,.06),0 1px 1px rgba(15,18,25,.04);--sh-md:0 4px 12px rgba(15,18,25,.08),0 1px 3px rgba(15,18,25,.05);--sh-lg:0 12px 28px rgba(15,18,25,.12),0 4px 8px rgba(15,18,25,.06);font-family:'Pretendard Variable',Pretendard,'Noto Sans KR',-apple-system,sans-serif;color:var(--t1)}
+.app.dark{--surface:#11141b;--elevated:#1a1e28;--sunken:#151922;--inset:#1f2430;--t1:#eef0f5;--t2:#a4acbb;--t3:#737d8d;--bs:#212633;--bd:#2d3442;--brand:#7b6dfa;--brand-hover:#8d80ff;--brand-fg:#a79cff;--brand-soft:#1e1a3d;--brand-border:#3b3378;--accent:#35c2de;--accent-border:#1d5c6e;--sh-sm:0 1px 2px rgba(0,0,0,.5);--sh-md:0 4px 12px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.4);--sh-lg:0 12px 28px rgba(0,0,0,.55),0 4px 8px rgba(0,0,0,.4)}
+.chip:hover{color:var(--brand-fg) !important;background:var(--brand-soft) !important;border-color:var(--brand-border) !important}
+.btn-brand:hover{background:var(--brand-hover) !important}
+a{color:var(--brand-fg)}a:hover{color:var(--brand-hover)}
+input::placeholder{color:var(--t3)}
+</style>
+</helmet>
+<div class="app {{themeClass}}" style="position: relative; width: 1280px; height: 832px; overflow: hidden; background: var(--surface)">
+<header style="position: absolute; left: 24px; right: 24px; top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; z-index: 20">
+<button type="button" onClick="{{toggleTheme}}" aria-label="다크 모드로 전환" style="width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--bs); border-radius: 999px; background: var(--inset); color: var(--t2); cursor: pointer; padding: 0">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</button>
+<div style="min-width: 124px; box-sizing: border-box; padding: 8px 16px; border-radius: 999px; background: var(--inset); border: 1px solid var(--bs); color: var(--t2); text-align: center; font-size: 13px; font-weight: 700">검색창</div>
+</header>
+
+<main style="position: absolute; left: 0; right: 0; top: 0; bottom: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 60px 24px 36px; box-sizing: border-box">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 20px 40px; width: 680px; box-sizing: border-box">
+<h1 style="margin: 0; text-align: center; color: var(--t1); font-size: 28px; line-height: 1.24; font-weight: 800; letter-spacing: -0.02em; word-break: keep-all">실시간 뉴스 기반 멀티 에이전트 투자 판단 지원 시스템</h1>
+<span style="display: block; width: 72px; height: 3px; border-radius: 999px; background: linear-gradient(90deg, var(--brand), var(--accent))"></span>
+</div>
+
+<form style="width: 658px; min-height: 52px; box-sizing: border-box; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 12px; padding: 4px 4px 4px 20px; border-radius: 999px; background: var(--inset); border: 1px solid var(--bs); box-shadow: var(--sh-sm)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--t3)"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+<input type="text" aria-label="뉴스 키워드 검색" placeholder="뉴스 키워드 검색" style="min-width: 0; border: 0; outline: 0; background: transparent; color: var(--t1); font: inherit; font-size: 15px">
+<a href="KeywordMap.dc.html" class="btn-brand" style="min-width: 72px; min-height: 44px; box-sizing: border-box; padding: 0 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand); color: var(--on-brand); font-weight: 700; font-size: 15px; text-decoration: none">검색</a>
+</form>
+
+<nav aria-label="추천 키워드" style="display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; width: 780px">
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">중동 전황</a>
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">원유</a>
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">해운</a>
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">방산</a>
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">환율</a>
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">정유</a>
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">에너지 ETF</a>
+<a href="KeywordMap.dc.html" class="chip" style="min-height: 36px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none">운임</a>
+</nav>
+</main>
+
+<footer style="position: absolute; left: 0; right: 0; bottom: 0; min-height: 76px; background: var(--sunken); border-top: 1px solid var(--bs); display: flex; align-items: center; justify-content: center; gap: 16px; color: var(--t3); font-size: 13px">
+<span>추천 이슈</span>
+<strong style="color: var(--t2)">중동 전황 · AI 서버 · 환율</strong>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":832}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.state && this.state.dark !== undefined ? this.state.dark : !!this.props.dark;
+    return {
+      themeClass: dark ? 'dark' : '',
+      toggleTheme: () => this.setState({ dark: !dark })
+    };
+  }
+}
+</script>
+</body>
+</html>

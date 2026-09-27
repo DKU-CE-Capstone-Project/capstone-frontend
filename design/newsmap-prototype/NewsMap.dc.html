@@ -1,0 +1,1009 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>뉴스맵</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+.app{--surface:#ffffff;--elevated:#ffffff;--sunken:#f2f4f7;--inset:#e7eaf0;--t1:#15181f;--t2:#525a67;--t3:#7d8695;--on-brand:#ffffff;--bs:#e6e9ee;--bd:#d5dae2;--brand:#5346d4;--brand-hover:#4438b4;--brand-fg:#4438b4;--brand-soft:#edebfc;--brand-border:#c7c0f5;--accent:#0e8fab;--accent-fg:#0b6f85;--accent-soft:#e2f4f8;--accent-border:#a8dbe6;--edge:#b2bac6;--node-bg:#edf0f6;--node-border:rgba(21,24,31,.13);--node-center:#e3e8f2;--sh-sm:0 1px 2px rgba(15,18,25,.06),0 1px 1px rgba(15,18,25,.04);--sh-md:0 4px 12px rgba(15,18,25,.08),0 1px 3px rgba(15,18,25,.05);--sh-lg:0 12px 28px rgba(15,18,25,.12),0 4px 8px rgba(15,18,25,.06);--sh-node:0 10px 24px rgba(15,18,25,.1);--sh-xl:0 24px 64px rgba(15,18,25,.14),0 8px 16px rgba(15,18,25,.07);--sh-node-hover:0 18px 40px rgba(15,18,25,.18);--up:#cf2f38;--up-soft:#fdecec;--down:#2560d8;--down-soft:#e9f0fd;--mixed:#b06f00;--mixed-soft:#fdf2df;--tone-oil:linear-gradient(135deg,#a8651b,#d69a44);--tone-shipping:linear-gradient(135deg,#2f6a8c,#74a6c4);--tone-defense:linear-gradient(135deg,#46693f,#86a878);--tone-currency:linear-gradient(135deg,#6a4a8f,#a689c6);font-family:'Pretendard Variable',Pretendard,'Noto Sans KR',-apple-system,sans-serif;color:var(--t1)}
+.app.dark{--surface:#11141b;--elevated:#1a1e28;--sunken:#151922;--inset:#1f2430;--t1:#eef0f5;--t2:#a4acbb;--t3:#737d8d;--bs:#212633;--bd:#2d3442;--brand:#7b6dfa;--brand-hover:#8d80ff;--brand-fg:#a79cff;--brand-soft:#1e1a3d;--brand-border:#3b3378;--accent:#35c2de;--accent-fg:#6fd6ea;--accent-soft:#10303a;--accent-border:#1d5c6e;--edge:#3a4354;--node-bg:#1c212c;--node-border:rgba(255,255,255,.08);--node-center:#232936;--sh-sm:0 1px 2px rgba(0,0,0,.5);--sh-md:0 4px 12px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.4);--sh-lg:0 12px 28px rgba(0,0,0,.55),0 4px 8px rgba(0,0,0,.4);--sh-node:0 10px 24px rgba(0,0,0,.5);--sh-xl:0 24px 64px rgba(0,0,0,.6),0 8px 16px rgba(0,0,0,.45);--sh-node-hover:0 18px 40px rgba(0,0,0,.62);--up:#ff6b70;--up-soft:#34181b;--down:#6f9dff;--down-soft:#16233f;--mixed:#edaa47;--mixed-soft:#332614;--tone-oil:linear-gradient(135deg,#7a4712,#ad7a32);--tone-shipping:linear-gradient(135deg,#1f4a63,#4c7d99);--tone-defense:linear-gradient(135deg,#304a2b,#5c7a52);--tone-currency:linear-gradient(135deg,#4a3266,#7a6199)}
+@keyframes orbitSpin{to{stroke-dashoffset:-160}}
+@media (prefers-reduced-motion: reduce){.orbit{animation:none !important}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+.node:hover{box-shadow:var(--sh-node-hover) !important}
+.space-mode,.space-mode .node{cursor:crosshair !important}
+.space-mode .node:hover{outline:2px dashed var(--accent);outline-offset:4px}
+[tabindex="-1"]:focus{outline:none}
+.kw:hover{color:var(--brand-fg) !important;background:var(--brand-soft) !important;border-color:var(--brand-border) !important}
+.nav-btn:hover{background:var(--brand-soft) !important;color:var(--brand-fg) !important}
+.btn-brand:hover{background:var(--brand-hover) !important}
+.btn-ghost:hover{color:var(--brand-fg) !important;border-color:var(--brand-border) !important}
+a{color:var(--brand-fg)}a:hover{color:var(--brand-hover)}
+</style>
+</helmet>
+<div class="app {{themeClass}}" style="position: relative; width: 1280px; height: 832px; overflow: hidden; background: var(--surface)">
+
+<div ref="{{viewportRef}}" class="{{spaceClass}}" tabIndex="-1" onKeyDown="{{vpKeyDown}}" onKeyUp="{{vpKeyUp}}" onBlur="{{vpBlur}}" onPointerEnter="{{vpEnter}}" aria-label="뉴스맵 캔버스 — 끌어서 이동, 휠로 확대·축소" onPointerDown="{{panDown}}" onPointerMove="{{panMove}}" onPointerUp="{{panUp}}" onPointerCancel="{{panUp}}" onClickCapture="{{panClickGuard}}" style="position: absolute; left: 0; top: 0; width: 1280px; height: 832px; overflow: hidden; cursor: {{cursor}}; touch-action: none; user-select: none">
+<div style="position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; transform: {{camTransform}}; transition: {{camTransition}}">
+<svg width="4000" height="4000" viewBox="-2000 -2000 4000 4000" aria-hidden="true" style="position: absolute; left: -2000px; top: -2000px; overflow: visible; pointer-events: none">
+<path class="orbit" d="{{ringsD5}}" fill="none" stroke="var(--accent)" stroke-opacity="0.07" stroke-width="1" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim5}}"></path>
+<path class="orbit" d="{{ringsD4}}" fill="none" stroke="var(--accent)" stroke-opacity="0.1" stroke-width="1" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim4}}"></path>
+<path class="orbit" d="{{ringsD3}}" fill="none" stroke="var(--accent)" stroke-opacity="0.16" stroke-width="1.1" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim3}}"></path>
+<path class="orbit" d="{{ringsD2}}" fill="none" stroke="var(--accent)" stroke-opacity="0.28" stroke-width="1.2" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim2}}"></path>
+<path class="orbit" d="{{ringsD1}}" fill="none" stroke="var(--accent)" stroke-opacity="0.5" stroke-width="1.4" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim1}}"></path>
+<path class="orbit" d="{{ringsD0}}" fill="none" stroke="var(--accent)" stroke-opacity="0.95" stroke-width="1.8" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim0}}"></path>
+<path d="{{kwEdgesD}}" fill="none" stroke="var(--edge)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 6" vector-effect="non-scaling-stroke"></path>
+<path d="{{edgesD}}" fill="none" stroke="var(--edge)" stroke-width="2" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+</svg>
+
+<sc-if value="{{showKeywords}}" hint-placeholder-val="{{true}}">
+<a href="KeywordMap.dc.html" class="kw" aria-label="원유 키워드맵 열기" style="position: absolute; left: -40px; top: -308px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">원유</a>
+<a href="KeywordMap.dc.html" class="kw" aria-label="중동 키워드맵 열기" style="position: absolute; left: 400px; top: -40px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">중동</a>
+<a href="KeywordMap.dc.html" class="kw" aria-label="해협 키워드맵 열기" style="position: absolute; left: -40px; top: 228px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">해협</a>
+<a href="KeywordMap.dc.html" class="kw" aria-label="에너지 키워드맵 열기" style="position: absolute; left: -480px; top: -40px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">에너지</a>
+</sc-if>
+
+<sc-for list="{{nodes}}" as="n" hint-placeholder-count="5">
+<div style="position: absolute; left: {{n.left}}; top: {{n.top}}; width: {{n.size}}; height: {{n.size}}; opacity: {{n.opacity}}; transition: opacity 300ms ease">
+<div style="position: absolute; left: 0; top: 0; width: {{n.base}}; height: {{n.base}}; transform-origin: 0 0; transform: scale({{n.k}})">
+<div style="position: relative; width: 100%; height: 100%; animation: pop 420ms cubic-bezier(0.22, 1, 0.36, 1)">
+<button type="button" class="node" onClick="{{n.act}}" onKeyDown="{{n.keyDown}}" aria-pressed="{{n.pressed}}" aria-label="{{n.aria}}" style="position: relative; width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: {{n.justify}}; padding: 0; border: {{n.ring}}; border-radius: 50%; background: {{n.bg}}; color: var(--t1); text-align: center; overflow: hidden; box-shadow: var(--sh-node); font: inherit; cursor: pointer">
+<sc-if value="{{n.showImg}}" hint-placeholder-val="{{true}}"><span style="display: block; width: 58%; height: 22%; margin: 15% auto 5%; border-radius: 6px; background: {{n.tone}}; box-shadow: var(--sh-sm); flex-shrink: 0"></span></sc-if>
+<span style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: {{n.copyPad}}">
+<strong style="display: -webkit-box; -webkit-line-clamp: {{n.lines}}; -webkit-box-orient: vertical; overflow: hidden; font-size: {{n.titleFont}}; line-height: 1.24; font-weight: 700; letter-spacing: -0.01em; word-break: keep-all; color: var(--t1)">{{n.title}}</strong>
+<small style="font-size: {{n.metaFont}}; font-weight: 600; color: var(--t3)">{{n.meta}}</small>
+</span>
+</button>
+<sc-if value="{{n.selected}}" hint-placeholder-val="{{false}}"><span aria-hidden="true" style="position: absolute; right: 10%; top: 6%; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand); color: var(--on-brand); box-shadow: var(--sh-md); pointer-events: none; font-size: 15px; font-weight: 800"><sc-if value="{{n.evNo}}" hint-placeholder-val="{{false}}">{{n.evNo}}</sc-if><sc-if value="{{n.showCheck}}" hint-placeholder-val="{{true}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span></sc-if>
+<button type="button" class="btn-brand" onClick="{{n.openDetail}}" aria-label="{{n.title}} 상세 보기" style="position: absolute; left: 50%; bottom: {{n.pillBottom}}; transform: translateX(-50%); min-height: 24px; box-sizing: border-box; padding: 3px 11px; display: inline-flex; align-items: center; border: 0; border-radius: 999px; background: var(--brand); color: var(--on-brand); font: inherit; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: var(--sh-sm); cursor: pointer">상세</button>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<header style="position: absolute; left: 24px; right: 24px; top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; z-index: 20">
+<button type="button" onClick="{{toggleTheme}}" aria-label="다크 모드로 전환" style="width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--bs); border-radius: 999px; background: var(--inset); color: var(--t2); cursor: pointer; padding: 0">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</button>
+<div role="status" style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; background: var(--elevated); border: 1px solid var(--bs); color: var(--t2); font-size: 13px; font-weight: 600; box-shadow: var(--sh-md)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent)"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+<span>{{statusText}}</span>
+</div>
+<div style="min-width: 124px; box-sizing: border-box; padding: 8px 16px; border-radius: 999px; background: var(--inset); border: 1px solid var(--bs); color: var(--t2); text-align: center; font-size: 13px; font-weight: 700">{{chipText}}</div>
+</header>
+
+<aside aria-label="유료 기능 프리뷰" style="position: absolute; right: 24px; top: 104px; width: 172px; box-sizing: border-box; padding: 12px; border-radius: 8px; border: 1px solid var(--bs); background: var(--elevated); box-shadow: var(--sh-sm); display: flex; flex-direction: column; gap: 8px; z-index: 15">
+<div style="display: flex; align-items: center; gap: 8px; color: var(--t2); font-size: 13px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+<strong>유료 프리뷰</strong>
+</div>
+<button type="button" disabled="" style="min-height: 34px; border: 1px dashed var(--bd); border-radius: 6px; background: var(--inset); color: var(--t3); font: inherit; font-size: 12px; font-weight: 600">뉴스 선택/제외</button>
+<button type="button" disabled="" style="min-height: 34px; border: 1px dashed var(--bd); border-radius: 6px; background: var(--inset); color: var(--t3); font: inherit; font-size: 12px; font-weight: 600">연관도 상세</button>
+<button type="button" disabled="" style="min-height: 34px; border: 1px dashed var(--bd); border-radius: 6px; background: var(--inset); color: var(--t3); font: inherit; font-size: 12px; font-weight: 600">심화 리포트</button>
+</aside>
+
+<sc-if value="{{showTray}}" hint-placeholder-val="{{false}}">
+<div role="region" aria-label="선택한 뉴스" style="position: absolute; left: {{trayLeft}}; top: 78px; transition: left 520ms cubic-bezier(0.22, 1, 0.36, 1); transform: translateX(-50%); z-index: 25; display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 16px; border-radius: 999px; border: 1px solid var(--brand-border); background: var(--elevated); box-shadow: var(--sh-lg); font-size: 13px; font-weight: 700; color: var(--t1)">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; background: var(--brand); color: var(--on-brand); font-size: 12px; font-variant-numeric: tabular-nums">{{selCount}}</span>건 선택됨</span>
+<button type="button" class="btn-ghost" onClick="{{clearSel}}" style="min-height: 36px; padding: 0 14px; border: 1px solid var(--bs); border-radius: 999px; background: var(--surface); color: var(--t2); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer">선택 해제</button>
+<button type="button" class="btn-brand" onClick="{{openReport}}" style="min-height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--brand); color: var(--on-brand); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>선택한 뉴스로 리포트 만들기</button>
+</div>
+</sc-if>
+
+<div aria-label="조작 방법" style="position: absolute; left: 24px; bottom: 98px; z-index: 30; width: 236px; box-sizing: border-box; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--bs); background: var(--elevated); box-shadow: var(--sh-md); display: grid; grid-template-columns: 92px 1fr; row-gap: 6px; column-gap: 8px; font-size: 12px; line-height: 1.35">
+<strong style="color: var(--t1)">클릭</strong><span style="color: var(--t2)">카드 선택·해제</span>
+<strong style="color: var(--t1)">더블클릭</strong><span style="color: var(--t2)">가운데로 이동</span>
+<strong style="color: var(--t1)">Space + 클릭</strong><span style="color: var(--t2)">그 카드 기준 검색 (하위 뉴스 펼치기·재검색)</span>
+<strong style="color: var(--t1)">휠</strong><span style="color: var(--t2)">확대·축소</span>
+<strong style="color: var(--t1)">끌기</strong><span style="color: var(--t2)">화면 이동</span>
+</div>
+
+<button type="button" class="btn-ghost" onClick="{{reset}}" style="position: absolute; left: 24px; bottom: 40px; z-index: 30; min-height: 46px; display: inline-flex; align-items: center; gap: 8px; padding: 0 18px; border: 1px solid var(--bs); border-radius: 999px; background: var(--elevated); color: var(--t2); font: inherit; font-size: 13px; font-weight: 700; box-shadow: var(--sh-lg); cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+처음 뉴스맵으로
+</button>
+
+<div aria-label="미니맵" style="position: absolute; right: 24px; bottom: 40px; width: 224px; box-sizing: border-box; padding: 10px; border-radius: 12px; border: 1px solid var(--bs); background: var(--elevated); box-shadow: var(--sh-lg); z-index: 30; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; color: var(--t3)">
+<span>미니맵</span>
+<span style="font-variant-numeric: tabular-nums">{{zoomLabel}}</span>
+</div>
+<button type="button" onClick="{{miniJump}}" aria-label="미니맵 — 누른 위치로 화면 이동" style="position: relative; display: block; width: 204px; height: 120px; padding: 0; border: 0; border-radius: 8px; background: var(--sunken); overflow: hidden; cursor: pointer">
+<svg width="204" height="120" viewBox="0 0 204 120" aria-hidden="true" style="position: absolute; left: 0; top: 0"><path d="{{miniEdgesD}}" fill="none" stroke="var(--edge)" stroke-width="1" stroke-linecap="round"></path></svg>
+<sc-for list="{{miniDots}}" as="d" hint-placeholder-count="5"><span style="position: absolute; left: {{d.left}}; top: {{d.top}}; width: {{d.size}}; height: {{d.size}}; border-radius: 50%; background: {{d.color}}; opacity: {{d.opacity}}"></span></sc-for>
+<span style="position: absolute; left: {{vp.left}}; top: {{vp.top}}; width: {{vp.w}}; height: {{vp.h}}; box-sizing: border-box; border: 1.5px solid var(--brand); border-radius: 3px; background: var(--brand-soft); opacity: 0.55"></span>
+</button>
+</div>
+
+<aside aria-label="뉴스 자세히 보기" aria-hidden="{{detailHidden}}" style="position: absolute; right: 0; top: 0; bottom: 0; z-index: 40; width: 520px; box-sizing: border-box; display: flex; flex-direction: column; background: var(--sunken); border-left: 1px solid var(--bs); box-shadow: var(--sh-xl); overflow-y: auto; transform: {{panelTransform}}; visibility: {{panelVisibility}}; transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear {{panelVisDelay}}">
+<div style="position: relative; height: 220px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: {{d.tone}}; border-bottom: 1px solid var(--bs)">
+<div style="position: absolute; inset: 0; background: linear-gradient(140deg, rgba(0,0,0,0.05), rgba(0,0,0,0.5))"></div>
+<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: relative; color: rgba(255,255,255,0.9)"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8M15 18h-5"></path><path d="M10 6h8v4h-8V6Z"></path></svg>
+<button type="button" onClick="{{closeDetail}}" aria-label="상세 닫기 (Esc)" style="position: absolute; right: 16px; top: 16px; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; background: rgba(0,0,0,0.45); color: #ffffff; cursor: pointer; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+<div style="padding: 28px 28px 32px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--t3); font-size: 13px; font-weight: 700">
+<span>{{d.source}}</span>
+<span style="font-variant-numeric: tabular-nums">{{d.time}}</span>
+</div>
+<h2 style="margin: 0; color: var(--t1); font-size: 26px; line-height: 1.28; font-weight: 700; letter-spacing: -0.01em; word-break: keep-all">{{d.title}}</h2>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; color: var(--t3); font-size: 13px; font-weight: 700; letter-spacing: 0.02em">기사 설명</h3>
+<p style="margin: 0; color: {{d.sumColor}}; font-size: 16px; line-height: 1.8">{{d.summary}}</p>
+</div>
+<div style="display: grid; gap: 8px; padding: 16px; border-radius: 8px; border-left: 3px solid var(--brand); background: var(--elevated)">
+<span style="color: var(--t3); font-size: 13px; font-weight: 700">원문 링크</span>
+<a href="https://n.news.naver.com/" style="display: inline-flex; align-items: center; gap: 8px; color: var(--brand-fg); font-size: 15px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px">[NAVER 뉴스 원문 URL]<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg></a>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{d.tags}}" as="tag" hint-placeholder-count="3"><span style="min-height: 34px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 6px 14px; font-size: 13px; font-weight: 600">{{tag}}</span></sc-for>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px">
+<button type="button" onClick="{{d.toggleSel}}" aria-pressed="{{d.pressed}}" style="min-height: 46px; display: inline-flex; align-items: center; gap: 8px; padding: 0 18px; border: 1px solid {{d.selBorder}}; border-radius: 999px; background: {{d.selBg}}; color: {{d.selColor}}; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>{{d.selLabel}}</button>
+<button type="button" class="btn-brand" onClick="{{d.openReport}}" style="min-height: 46px; display: inline-flex; align-items: center; gap: 8px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--brand); color: var(--on-brand); font: inherit; font-size: 14px; font-weight: 700; box-shadow: var(--sh-md); cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8M16 13H8M16 17H8"></path></svg>{{d.reportLabel}}</button>
+</div>
+</div>
+</aside>
+
+<aside aria-label="AI 리포트" aria-hidden="{{reportHidden}}" style="position: absolute; right: 0; top: 0; bottom: 0; z-index: 41; width: 720px; box-sizing: border-box; background: var(--sunken); border-left: 1px solid var(--bs); box-shadow: var(--sh-xl); overflow-y: auto; transform: {{reportTransform}}; visibility: {{reportVisibility}}; transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear {{reportVisDelay}}">
+<div style="position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 28px 16px; background: var(--sunken); border-bottom: 1px solid var(--bs)">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<span style="color: var(--brand-fg); font-size: 12px; font-weight: 800; letter-spacing: 0.04em">AI REPORT · 근거 뉴스 {{r.count}}건</span>
+<h2 style="margin: 0; color: var(--t1); font-size: 22px; line-height: 1.3; font-weight: 700; word-break: keep-all">{{r.title}}</h2>
+</div>
+<button type="button" onClick="{{closeReport}}" aria-label="리포트 닫기 (Esc)" style="flex-shrink: 0; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--bs); border-radius: 999px; background: var(--surface); color: var(--t2); cursor: pointer; padding: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+</div>
+
+<div style="padding: 20px 28px 40px; display: flex; flex-direction: column; gap: 24px">
+<section aria-label="근거 뉴스" style="display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; color: var(--t3); font-size: 13px; font-weight: 700">근거 뉴스</h3>
+<sc-for list="{{r.evidence}}" as="ev" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: 10px; border: 1px solid var(--bs); background: var(--elevated)">
+<span style="flex-shrink: 0; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand); color: var(--on-brand); font-size: 13px; font-weight: 800">{{ev.no}}</span>
+<span style="flex-shrink: 0; width: 40px; height: 28px; border-radius: 5px; background: {{ev.tone}}"></span>
+<span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><strong style="color: var(--t1); font-size: 14px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ev.title}}</strong><small style="color: var(--t3); font-size: 12px; font-weight: 600">{{ev.meta}}</small></span>
+<button type="button" onClick="{{ev.remove}}" aria-label="{{ev.title}} 근거에서 빼기" style="flex-shrink: 0; min-height: 36px; padding: 0 12px; border: 1px solid var(--bs); border-radius: 999px; background: var(--surface); color: var(--t2); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer">빼기</button>
+</div>
+</sc-for>
+<p style="margin: 0; color: var(--t3); font-size: 12px">뉴스맵에서 카드를 클릭해 근거를 더하거나 뺄 수 있어요. 근거가 바뀌면 리포트를 다시 만들어요.</p>
+</section>
+
+<sc-if value="{{r.generating}}" hint-placeholder-val="{{false}}">
+<section role="status" aria-label="리포트 생성 중" style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 10px; border: 1px solid var(--bs); background: var(--elevated)">
+<sc-for list="{{r.steps}}" as="stp" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 12px; color: {{stp.color}}; font-size: 14px; font-weight: 600">
+<sc-if value="{{stp.done}}" hint-placeholder-val="{{false}}"><span style="width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand); color: var(--on-brand)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span></sc-if>
+<sc-if value="{{stp.active}}" hint-placeholder-val="{{false}}"><span style="width: 18px; height: 18px; margin: 2px; box-sizing: border-box; border-radius: 999px; border: 2.5px solid var(--brand-soft); border-top-color: var(--brand); animation: spin 800ms linear infinite"></span></sc-if>
+<sc-if value="{{stp.wait}}" hint-placeholder-val="{{true}}"><span style="width: 22px; height: 22px; box-sizing: border-box; border-radius: 999px; border: 2px dashed var(--bd)"></span></sc-if>
+<span>{{stp.label}}</span>
+</div>
+</sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{r.ready}}" hint-placeholder-val="{{true}}">
+<section style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--bs)">
+<h3 style="margin: 16px 0 0; color: var(--t1); font-size: 16px; font-weight: 700">사건 요약</h3>
+<p style="margin: 0; color: var(--t2); font-size: 15px; line-height: 1.75">호르무즈 해협 주변 긴장이 원유 공급 차질 우려로 연결되며 에너지, 해운, 방산 섹터의 단기 수급을 자극했다.</p>
+</section>
+<section style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--bs)">
+<h3 style="margin: 16px 0 0; color: var(--t1); font-size: 16px; font-weight: 700">시장 영향</h3>
+<p style="margin: 0; color: var(--t2); font-size: 15px; line-height: 1.75">유가 상승은 정유 마진에는 단기 호재지만 물류비와 수입 물가 상승으로 제조·소비재 업종에는 부담이 될 수 있다.</p>
+</section>
+<section aria-label="종목 영향" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<article style="min-height: 150px; box-sizing: border-box; padding: 16px; border-radius: 10px; border: 1px solid var(--bs); border-top: 3px solid var(--mixed); background: var(--mixed-soft); display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 6px"><strong style="color: var(--t1); font-size: 15px; word-break: keep-all">SK이노베이션</strong><span style="flex-shrink: 0; padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px; color: var(--mixed); font-size: 11px; font-weight: 700">혼조</span></div>
+<span style="color: var(--t3); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums">KRX:096770</span>
+<p style="margin: 0; color: var(--t2); font-size: 13px; line-height: 1.45">정제 마진 개선 기대와 원재료 부담이 동시에 반영된다.</p>
+</article>
+<article style="min-height: 150px; box-sizing: border-box; padding: 16px; border-radius: 10px; border: 1px solid var(--bs); border-top: 3px solid var(--mixed); background: var(--mixed-soft); display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 6px"><strong style="color: var(--t1); font-size: 15px; word-break: keep-all">HMM</strong><span style="flex-shrink: 0; padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px; color: var(--mixed); font-size: 11px; font-weight: 700">혼조</span></div>
+<span style="color: var(--t3); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums">KRX:011200</span>
+<p style="margin: 0; color: var(--t2); font-size: 13px; line-height: 1.45">운임 상승은 매출에 긍정적이나 우회 항로 비용이 변수다.</p>
+</article>
+<article style="min-height: 150px; box-sizing: border-box; padding: 16px; border-radius: 10px; border: 1px solid var(--bs); border-top: 3px solid var(--up); background: var(--up-soft); display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 6px"><strong style="color: var(--t1); font-size: 15px; word-break: keep-all">한화에어로스페이스</strong><span style="flex-shrink: 0; padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px; color: var(--up); font-size: 11px; font-weight: 700">상승 요인</span></div>
+<span style="color: var(--t3); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums">KRX:012450</span>
+<p style="margin: 0; color: var(--t2); font-size: 13px; line-height: 1.45">방산 수요 기대가 단기 모멘텀으로 작동할 수 있다.</p>
+</article>
+</section>
+<section style="display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 10px; border: 1px solid var(--bs); background: var(--elevated)">
+<div style="display: flex; justify-content: space-between; color: var(--t3); font-size: 12px; font-weight: 700"><span>전략 성과</span><span>목업 차트 · 실제 시세 아님</span></div>
+<div role="img" aria-label="전략 성과 목업 차트" style="height: 132px; display: flex; align-items: flex-end; gap: 8px; background: linear-gradient(var(--bs) 1px, transparent 1px) 0 0 / 100% 25%">
+<span style="flex: 1; height: 34%; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--brand), var(--accent))"></span>
+<span style="flex: 1; height: 62%; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--brand), var(--accent))"></span>
+<span style="flex: 1; height: 48%; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--brand), var(--accent))"></span>
+<span style="flex: 1; height: 74%; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--brand), var(--accent))"></span>
+<span style="flex: 1; height: 56%; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--brand), var(--accent))"></span>
+<span style="flex: 1; height: 82%; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--brand), var(--accent))"></span>
+<span style="flex: 1; height: 68%; border-radius: 5px 5px 0 0; background: linear-gradient(180deg, var(--brand), var(--accent))"></span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border-radius: 10px; border: 1px solid var(--brand-border); background: var(--brand-soft)">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--brand-fg)"><path d="M3 3v18h18"></path><path d="m19 9-5 5-4-4-3 3"></path></svg>
+<strong style="color: var(--t1); font-size: 16px">선별 관망</strong>
+<p style="margin: 0; color: var(--t2); font-size: 13px; line-height: 1.5">에너지와 방산은 이벤트 민감도가 높고, 해운은 비용과 운임이 동시에 움직여 확인이 필요하다.</p>
+</div>
+</section>
+<section style="display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--bs)">
+<h3 style="margin: 16px 0 0; color: var(--t1); font-size: 16px; font-weight: 700">리스크 요인</h3>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<span style="min-height: 34px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 6px 14px; font-size: 13px; font-weight: 600">유가 급락 반전</span>
+<span style="min-height: 34px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 6px 14px; font-size: 13px; font-weight: 600">정치적 완화 신호</span>
+<span style="min-height: 34px; box-sizing: border-box; display: inline-flex; align-items: center; border: 1px solid var(--bs); border-radius: 8px; background: var(--inset); color: var(--t2); padding: 6px 14px; font-size: 13px; font-weight: 600">보험료와 운임 비용 장기화</span>
+</div>
+<p style="margin: 0; color: var(--t3); font-size: 13px; line-height: 1.6">단기 지정학 뉴스는 반전 속도가 빠르므로 추격 매수보다 리스크 구간을 먼저 확인한다.</p>
+</section>
+<p style="margin: 0; padding: 12px 14px; border-radius: 8px; background: var(--inset); color: var(--t3); font-size: 12px; line-height: 1.6">리포트 본문은 목업 데이터(중동 항로 리포트)예요. 실제 서비스에서는 위 근거 뉴스 {{r.count}}건의 본문을 추출해 생성합니다. 투자 권유가 아닌 판단 참고 자료입니다.</p>
+</sc-if>
+</div>
+</aside>
+
+<nav aria-label="화면 컨트롤" style="position: absolute; left: 549px; bottom: 40px; display: flex; gap: 8px; padding: 4px; border-radius: 999px; border: 1px solid var(--bs); background: var(--elevated); box-shadow: var(--sh-lg); z-index: 30">
+<a href="KeywordMap.dc.html" class="nav-btn" aria-label="뒤로가기" style="width: 52px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--t2)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg></a>
+<a href="#report" class="nav-btn" onClick="{{navReport}}" aria-label="리포트" style="width: 52px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--t2)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8M16 13H8M16 17H8"></path></svg></a>
+<a href="Main.dc.html" class="nav-btn" aria-label="검색" style="width: 52px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--t2)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"orbitRotating":{"editor":"int","default":3,"min":0,"max":6,"section":"궤도 회전"},"orbitSpeed":{"editor":"range","default":1,"min":0,"max":3,"step":0.25,"unit":"×","section":"궤도 회전"},"$preview":{"width":1280,"height":832}}'>
+class Component extends DCLogic {
+  data() {
+    return {
+      root: { title: '중동 항로 긴장 재점화, 원유 선물 장중 급등', meta: 'Global Market Wire', tone: 'var(--tone-oil)', sum: '호르무즈 해협 주변 긴장이 다시 높아지며 국제 유가와 에너지 관련 종목이 동반 상승했다.', time: '2026-04-28 09:30', kw: ['원유', '중동', '해협', '에너지'] },
+      rootSets: [
+        [
+          { t: '정유사 마진 개선 기대, 에너지주 강세', m: 'Market Desk', tone: 'var(--tone-oil)', b: 0, sum: '공급 차질 우려가 정제 마진 개선 기대를 키우며 정유주와 에너지 ETF에 매수세가 유입됐다.', time: '2026-04-28 10:10', kw: ['정유', '마진', 'ETF', '재고'] },
+          { t: '해운 운임지수 반등, 우회 항로 비용 반영', m: 'Trade Journal', tone: 'var(--tone-shipping)', b: 1, sum: '항로 리스크가 커지며 해운 운임지수가 반등했고 물류비 상승 가능성이 제기됐다.', time: '2026-04-28 11:40', kw: ['해운', '운임', '물류비', '보험료'] },
+          { t: '달러 강세 재개, 수입 물가 부담 확대', m: 'FX Monitor', tone: 'var(--tone-currency)', b: 2, sum: '위험 회피 심리가 강해지며 달러가 상승했고 원자재 수입 기업의 비용 부담이 확대됐다.', time: '2026-04-29 13:00', kw: ['달러', '환율', '수입 물가', '위험 회피'] },
+          { t: '방산 수주 기대감 확대, 관련주 거래량 증가', m: 'Security Brief', tone: 'var(--tone-defense)', b: 3, sum: '지정학적 불확실성이 방산 장비 수요 기대를 키우며 관련 종목 거래량이 늘었다.', time: '2026-04-28 12:15', kw: ['방산', '수주', '감시 장비', '지정학'] }
+        ],
+        [
+          { t: '국제유가 변동성 확대, 에너지주 등락 반복', m: '[샘플 기사]', tone: 'var(--tone-oil)', b: 0 },
+          { t: '호르무즈 해협 통항 차질 우려 지속', m: '[샘플 기사]', tone: 'var(--tone-shipping)', b: 1 },
+          { t: '항공·화학 업종 원가 부담 부각', m: '[샘플 기사]', tone: 'var(--tone-currency)', b: 2 },
+          { t: '긴장 완화 신호에 방산주 차익 실현', m: '[샘플 기사]', tone: 'var(--tone-defense)', b: 3 }
+        ]
+      ],
+      pools: [
+        ['정제마진 반등, 정유사 실적 기대', '에너지 ETF 자금 유입 확대', '재고 지표 발표 앞두고 관망세', '정유주 차익 실현 매물 출회', '휘발유 가격 상승 압력', '원유 재고 감소 전망', '산유국 증산 논의 재부상', '정유 설비 가동률 상승', '석유화학 스프레드 개선', '연료비 부담에 소비 둔화 우려', '에너지 기업 배당 확대 기대', '유가 헤지 수요 증가'],
+        ['우회 항로 확대로 운송 기간 증가', '해상 보험료 인상 움직임', '컨테이너 운임 단기 급등', '선사들 운임 할증료 부과', '수출 기업 물류비 부담 가중', '항만 적체 우려 확산', '벌크선 운임 동반 상승', '항공 화물 수요 일시 증가', '조선사 신규 수주 문의 증가', '물류 대란 재현 가능성 점검', '해운주 변동성 확대', '공급망 재편 논의 가속'],
+        ['원·달러 환율 상승, 수입 기업 부담', '항공주 환율 민감도 부각', '안전자산 선호 강화', '외국인 순매도 확대', '원자재 수입 단가 상승', '환헤지 수요 증가', '수출주 환율 효과 기대', '금 가격 강세 지속', '채권 금리 방향성 혼조', '소비자물가 상방 압력', '통화당국 시장 개입 경계', '신흥국 통화 약세 확산'],
+        ['방공 체계 수출 협상 기대', '방산 테마주 거래량 급증', '수주 공시 확인 필요성 부각', '방산주 단기 과열 경고', '국방 예산 증액 논의', '감시 장비 수요 증가', '드론 방어 기술 관심 확대', '방산 부품사 동반 강세', '해외 방산 전시회 일정 주목', '지정학 리스크 프리미엄 축소', '방산 수출 금융 지원 논의', '장기 계약 가시성 점검']
+      ]
+    };
+  }
+
+  initialTree() {
+    var d = this.data();
+    var t = { seq: 0, nodes: {}, order: [] };
+    t.nodes.root = { id: 'root', parent: null, level: 0, x: 0, y: 0, title: d.root.title, meta: d.root.meta, tone: d.root.tone, sum: d.root.sum, time: d.root.time, kw: d.root.kw, branch: -1, expanded: true, batch: 0, off: 0 };
+    t.order.push('root');
+    this.addRootKids(t, 0);
+    return t;
+  }
+
+  tree() {
+    var st = this.state || {};
+    return st.tree || this.initialTree();
+  }
+
+  clone(t) { return JSON.parse(JSON.stringify(t)); }
+
+  add(t, n) {
+    n.id = 'k' + (t.seq++);
+    var p = t.nodes[n.parent];
+    // 부모로부터의 목표 거리(궤도 반지름). 자동 정렬은 각도만 바꾸고 이 거리는 지킨다.
+    if (p && n.r0 === undefined) n.r0 = Math.hypot(n.x - p.x, n.y - p.y);
+    t.nodes[n.id] = n;
+    t.order.push(n.id);
+  }
+
+  addRootKids(t, batch) {
+    var set = this.data().rootSets[batch % 2];
+    var angles = [-45, 45, 135, -135];
+    var self = this;
+    set.forEach(function (s, i) {
+      var a = angles[i] * Math.PI / 180;
+      self.add(t, { parent: 'root', level: 1, abs: a, x: 300 * Math.cos(a), y: 200 * Math.sin(a), title: s.t, meta: s.m, tone: s.tone, sum: s.sum || '', time: s.time || '', kw: s.kw || [['정유', '해운', '환율', '방산'][s.b]], branch: s.b, expanded: false, batch: 0, off: i * 5 });
+    });
+  }
+
+  // 단계가 깊어질 때마다 카드·궤도 크기가 F배로 줄고, 카메라는 1/F배로 확대된다.
+  // 그래서 가운데에 오는 카드는 몇 단계를 내려가도 화면에서 같은 크기로 보인다.
+  shrink() { return 0.6; }
+  ringRadius(n) { return 250 * Math.pow(this.shrink(), Math.max(0, n.level - 1)); }
+  baseOf(n) { return n.level === 0 ? 260 : 180; }
+  sizeOf(n) { return n.level === 0 ? 260 : 180 * Math.pow(this.shrink(), n.level - 1); }
+  zoomFor(n) { return n.level <= 1 ? 1 : 1 / Math.pow(this.shrink(), n.level - 1); }
+  ancestors(t, id) {
+    var out = {};
+    var cur = t.nodes[id];
+    while (cur && cur.parent) { out[cur.parent] = true; cur = t.nodes[cur.parent]; }
+    return out;
+  }
+
+  addKids(t, id) {
+    var n = t.nodes[id];
+    var p = t.nodes[n.parent];
+    var pool = this.data().pools[n.branch];
+    var dir = Math.atan2(n.y - p.y, n.x - p.x);
+    var R = this.ringRadius(n);
+    var start = n.off + n.batch * 3;
+    var self = this;
+    [-50, 0, 50].forEach(function (deg, i) {
+      var a = dir + deg * Math.PI / 180;
+      self.add(t, {
+        parent: id, level: n.level + 1,
+        x: n.x + R * 0.35 * Math.cos(a), y: n.y + R * 0.35 * Math.sin(a), r0: R, slot: deg * Math.PI / 180,
+        title: pool[(start + i) % pool.length], meta: '[샘플 기사]', tone: n.tone, sum: '', time: '', kw: [['정유', '해운', '환율', '방산'][n.branch]],
+        branch: n.branch, expanded: false, batch: 0, off: (start + 3 + i * 4) % pool.length
+      });
+    });
+  }
+
+  // ── 자동 정렬 (물리 시뮬레이션) ──
+  // 모든 카드가 매 프레임 힘을 받아 움직이다가 자리를 잡으면 멈춘다.
+  //  1) 궤도: 부모와의 거리를 궤도 반지름(r0)으로 유지
+  //  2) 방향: 하위 카드는 부모의 바깥쪽(조부모→부모 방향) 부채꼴 자리(slot)를 향한다
+  //  3) 충돌: 같은 부모의 형제끼리는 서로 밀고, 다른 가지끼리 부딪히면 두 가지의 머리(공통 조상 바로 아래 카드)를
+  //     통째로 밀어낸다. 그래서 가지끼리 카드가 섞이지 않는다.
+  //  카드가 움직이면 하위 가지 전체가 같이 따라간다. 중앙 카드는 고정.
+  step(t) {
+    var self = this;
+    var ids = t.order.filter(function (id) { return t.nodes[id]; });
+    var vel = this.vel || (this.vel = {});
+    var chains = {};
+    ids.forEach(function (id) {
+      var c = [id], cur = t.nodes[id];
+      while (cur && cur.parent) { c.push(cur.parent); cur = t.nodes[cur.parent]; }
+      chains[id] = c.reverse(); // root → … → id
+    });
+    var F = {};
+    ids.forEach(function (id) { F[id] = { x: 0, y: 0 }; if (!vel[id]) vel[id] = { x: 0, y: 0 }; });
+    function wrap(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
+
+    ids.forEach(function (id) {
+      var n = t.nodes[id];
+      if (!n.parent) return;
+      var p = t.nodes[n.parent];
+      var dx = n.x - p.x, dy = n.y - p.y, d = Math.hypot(dx, dy) || 0.01;
+      // 1) 궤도 반지름
+      var kr = (n.r0 - d) / d * 0.1 * (d < n.r0 ? 2.5 : 1); // 안쪽으로는 단단히, 바깥으로는 붐비면 조금 넓어질 수 있게
+      F[id].x += dx * kr; F[id].y += dy * kr;
+      // 2) 부채꼴 방향
+      var target;
+      if (n.abs !== undefined) target = n.abs;
+      else {
+        var g = t.nodes[p.parent];
+        var base = g ? Math.atan2(p.y - g.y, p.x - g.x) : 0;
+        target = base + (n.slot || 0);
+      }
+      var th = Math.atan2(dy, dx);
+      var diff = wrap(target - th);
+      var ka = diff * d * 0.03;
+      F[id].x += -Math.sin(th) * ka; F[id].y += Math.cos(th) * ka;
+    });
+
+    // 3) 충돌
+    for (var i = 0; i < ids.length; i++) {
+      for (var j = i + 1; j < ids.length; j++) {
+        var a = t.nodes[ids[i]], b = t.nodes[ids[j]];
+        var sa = self.sizeOf(a), sb = self.sizeOf(b);
+        var gap = 0.16 * Math.min(sa, sb) + 3;
+        var dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+        var over = (sa + sb) / 2 + gap - d;
+        if (over <= 0) continue;
+        var ca = chains[a.id], cb = chains[b.id];
+        var k = 0;
+        while (k < ca.length && k < cb.length && ca[k] === cb[k]) k++;
+        // k: 공통 조상 다음 위치. 한쪽이 다른 쪽의 조상이면 자손 쪽 가지만 민다.
+        var ha = ca[k], hb = cb[k];
+        var ux = dx / d, uy = dy / d, f = over * 0.35;
+        if (!ha) { F[hb].x += ux * f; F[hb].y += uy * f; continue; }
+        if (!hb) { F[ha].x -= ux * f; F[ha].y -= uy * f; continue; }
+        var na = t.nodes[ha], nb = t.nodes[hb];
+        var wa = na.level === 0 ? 0 : 0.5, wb = nb.level === 0 ? 0 : 0.5;
+        if (wa && wb) { var s1 = self.sizeOf(na), s2 = self.sizeOf(nb); wa = s2 * s2 / (s1 * s1 + s2 * s2); wb = 1 - wa; }
+        else if (wa) wa = 1; else if (wb) wb = 1;
+        F[ha].x -= ux * f * wa; F[ha].y -= uy * f * wa;
+        F[hb].x += ux * f * wb; F[hb].y += uy * f * wb;
+      }
+    }
+
+    // 적분: 부모의 이동량을 자식이 물려받는다 (가지 전체가 같이 움직임)
+    var disp = {}, energy = 0;
+    var sorted = ids.slice().sort(function (x, y) { return t.nodes[x].level - t.nodes[y].level; });
+    sorted.forEach(function (id) {
+      var n = t.nodes[id];
+      if (!n.parent) { disp[id] = { x: 0, y: 0 }; vel[id] = { x: 0, y: 0 }; return; }
+      var v = vel[id];
+      v.x = (v.x + F[id].x) * 0.78; v.y = (v.y + F[id].y) * 0.78;
+      var pd = disp[n.parent] || { x: 0, y: 0 };
+      disp[id] = { x: v.x + pd.x, y: v.y + pd.y };
+      n.x += disp[id].x; n.y += disp[id].y;
+      energy += Math.hypot(v.x, v.y) / self.sizeOf(n);
+    });
+    return energy;
+  }
+
+  startSim() {
+    this.simFrames = 0;
+    if (this.raf) return;
+    var self = this;
+    var tick = function () {
+      self.raf = null;
+      var st = self.state || {};
+      if (!st.tree) { self.setState({ tree: self.initialTree() }); self.raf = requestAnimationFrame(tick); return; }
+      var e = 0;
+      for (var s = 0; s < 2; s++) e = self.step(st.tree);
+      self.simFrames++;
+      self.forceUpdate();
+      if ((e > 0.002 || self.simFrames < 20) && self.simFrames < 900) self.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  componentDidMount() { this.startSim(); }
+
+  removeDesc(t, id) {
+    var self = this;
+    t.order.slice().forEach(function (cid) {
+      var c = t.nodes[cid];
+      if (c && c.parent === id) {
+        self.removeDesc(t, cid);
+        delete t.nodes[cid];
+        t.order = t.order.filter(function (x) { return x !== cid; });
+      }
+    });
+  }
+
+  short(n) { return n.title.length > 12 ? n.title.slice(0, 12) + '…' : n.title; }
+
+  // 더블클릭: 그 카드를 화면 가운데로 옮기기만 한다. 검색·펼치기는 하지 않는다.
+  center(id) {
+    var n = this.tree().nodes[id];
+    if (!n) return;
+    this.setState({ focus: id, uz: 1, pan: { x: 0, y: 0 }, status: '‘' + this.short(n) + '’ 을 가운데로 옮겼어요' });
+  }
+
+  // 상세: 그 카드로 확대하고 오른쪽 패널을 연다
+  openDetail(id) {
+    var n = this.tree().nodes[id];
+    if (!n) return;
+    this.setState({ detailId: id, lastDetailId: id, status: '‘' + this.short(n) + '’ 자세히 보기 · Esc로 닫기' });
+  }
+
+  // 리포트: 선택한 카드(없으면 지금 보는 카드)를 근거로 리포트를 만든다
+  openReport(fromId) {
+    var st = this.state || {};
+    var t = this.tree();
+    var sel = Object.assign({}, st.sel || {});
+    var ids = Object.keys(sel).filter(function (k) { return t.nodes[k]; });
+    if (!ids.length && fromId && t.nodes[fromId]) { sel[fromId] = true; ids = [fromId]; }
+    if (!ids.length) { this.setState({ status: '먼저 리포트에 쓸 카드를 클릭해서 선택하세요' }); return; }
+    this.setState({ sel: sel, reportOpen: true, detailId: null, status: '근거 뉴스 ' + ids.length + '건으로 리포트를 만드는 중… · Esc로 닫기' });
+    this.generate();
+  }
+
+  // 생성 단계 연출: 본문 추출 → 분석 → 전략 (실제 API: POST /reports → GET /reports/{id})
+  generate() {
+    var self = this;
+    (this.genTimers || []).forEach(function (x) { clearTimeout(x); });
+    this.setState({ reportPhase: 0 });
+    this.genTimers = [1, 2, 3].map(function (ph) {
+      return setTimeout(function () {
+        self.setState(ph === 3 ? { reportPhase: 3, status: '리포트가 준비됐어요 · Esc로 닫기' } : { reportPhase: ph });
+      }, ph * 650);
+    });
+  }
+
+  closeReport() {
+    (this.genTimers || []).forEach(function (x) { clearTimeout(x); });
+    this.setState({ reportOpen: false, status: '뉴스맵으로 돌아왔어요' });
+  }
+
+  closeDetail() {
+    this.setState({ detailId: null, status: '뉴스맵으로 돌아왔어요' });
+  }
+
+  // 한 번 클릭: 선택/해제
+  toggleSelect(id) {
+    var st = this.state || {};
+    var sel = Object.assign({}, st.sel || {});
+    var n = this.tree().nodes[id];
+    if (sel[id]) delete sel[id]; else sel[id] = true;
+    var count = Object.keys(sel).length;
+    if (st.reportOpen) {
+      if (!count) { this.setState({ sel: sel }); this.closeReport(); return; }
+      this.setState({ sel: sel, status: '근거가 바뀌어 리포트를 다시 만드는 중…' });
+      this.generate();
+      return;
+    }
+    this.setState({ sel: sel, status: n ? ('‘' + this.short(n) + '’ ' + (sel[id] ? '선택' : '선택 해제') + ' · 선택 ' + count + '건') : st.status });
+  }
+
+  // 카드를 누른 채 Space/Enter: 재검색 (안 펼친 카드면 하위 뉴스를 불러온다)
+  research(id) {
+    var st = this.state || {};
+    if (st.loadingId) return;
+    var t = this.clone(this.tree());
+    var n = t.nodes[id];
+    if (!n) return;
+    if (!n.expanded) {
+      n.expanded = true;
+      this.addKids(t, id);
+      this.setState({ tree: t, status: '‘' + this.short(n) + '’ 기준으로 하위 뉴스 3건을 불러왔어요' });
+      this.startSim();
+      return;
+    }
+    this.setState({ loadingId: id, status: '‘' + this.short(n) + '’ 기준으로 다시 검색하는 중…' });
+    var self = this;
+    var timer = setTimeout(function () {
+      var t2 = self.clone(self.tree());
+      var m = t2.nodes[id];
+      self.removeDesc(t2, id);
+      m.batch += 1;
+      if (m.level === 0) self.addRootKids(t2, m.batch);
+      else self.addKids(t2, id);
+      self.setState({ tree: t2, loadingId: null, status: '‘' + self.short(m) + '’ 연관 뉴스를 새로 불러왔어요' });
+      self.startSim();
+    }, 800);
+    this.timers = (this.timers || []).concat([timer]);
+  }
+
+  // ── 누른 채 끌어서 화면 이동 ──
+  // 4px 이상 움직여야 드래그로 본다. 그 전에는 카드·버튼의 클릭이 그대로 동작한다.
+  panDown(e) {
+    if (this.state && (this.state.detailId || this.state.reportOpen)) return; // 상세·리포트 중에는 화면 고정
+    if (e.button !== undefined && e.button !== 0) return;
+    var r = e.currentTarget.getBoundingClientRect();
+    var st = this.state || {};
+    var t = this.tree();
+    var focus = t.nodes[st.focus] || t.nodes.root;
+    var lim = this.zoomLimits(t, focus);
+    var z = Math.min(lim.max, Math.max(lim.min, this.zoomFor(focus) * (st.uz || 1)));
+    var pan = this.clampPan(st.pan || { x: 0, y: 0 }, z, focus, t);
+    this.drag = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, ratio: r.width / 1280 || 1, el: e.currentTarget, pid: e.pointerId, moved: false };
+  }
+
+  panMove(e) {
+    var d = this.drag;
+    if (!d) return;
+    var dx = (e.clientX - d.x) / d.ratio, dy = (e.clientY - d.y) / d.ratio;
+    if (!d.moved) {
+      if (Math.hypot(dx, dy) < 4) return;
+      d.moved = true;
+      try { d.el.setPointerCapture(d.pid); } catch (err) {}
+    }
+    var st = this.state || {};
+    var t = this.tree();
+    var focus = t.nodes[st.focus] || t.nodes.root;
+    var lim = this.zoomLimits(t, focus);
+    var z = Math.min(lim.max, Math.max(lim.min, this.zoomFor(focus) * (st.uz || 1)));
+    this.setState({ pan: this.clampPan({ x: d.px + dx, y: d.py + dy }, z, focus, t), dragging: true });
+  }
+
+  // ── 카드 트리 전체 크기로 확대·이동 범위를 정한다 ──
+  showsKeywords(t) {
+    return t.order.every(function (id) { var n = t.nodes[id]; return n.level === 0 || !n.expanded; });
+  }
+
+  // 트리 전체(카드 + 중앙 키워드 궤도)를 감싸는 사각형과 가장 작은 카드 크기
+  treeBounds(t) {
+    var self = this;
+    var b = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, minSize: Infinity };
+    t.order.forEach(function (id) {
+      var n = t.nodes[id], s = self.sizeOf(n);
+      b.x0 = Math.min(b.x0, n.x - s / 2); b.x1 = Math.max(b.x1, n.x + s / 2);
+      b.y0 = Math.min(b.y0, n.y - s / 2); b.y1 = Math.max(b.y1, n.y + s / 2);
+      b.minSize = Math.min(b.minSize, s);
+    });
+    if (this.showsKeywords(t)) {
+      b.x0 = Math.min(b.x0, -480); b.x1 = Math.max(b.x1, 480);
+      b.y0 = Math.min(b.y0, -308); b.y1 = Math.max(b.y1, 308);
+    }
+    return b;
+  }
+
+  // 최소 배율: 트리 전체가 화면에 들어오는 배율 / 최대 배율: 가장 작은(깊은) 카드가 화면에서 300px로 보이는 배율
+  zoomLimits(t, focus) {
+    var b = this.treeBounds(t);
+    var base = this.zoomFor(focus);
+    var fit = Math.min(1280 * 0.86 / (b.x1 - b.x0), 832 * 0.72 / (b.y1 - b.y0));
+    return { min: Math.min(fit, base), max: Math.max(300 / b.minSize, base), bounds: b };
+  }
+
+  // 화면 가운데가 트리 사각형 밖으로 나가지 않도록 이동량을 제한한다
+  clampPan(pan, z, focus, t) {
+    var b = this.treeBounds(t);
+    var cx = focus.x - pan.x / z, cy = focus.y - pan.y / z;
+    cx = Math.min(b.x1, Math.max(b.x0, cx));
+    cy = Math.min(b.y1, Math.max(b.y0, cy));
+    return { x: (focus.x - cx) * z, y: (focus.y - cy) * z };
+  }
+
+  // ── 휠 확대/축소: 커서 아래 지점을 고정한 채 배율을 바꾼다 ──
+  attachWheel(el) {
+    if (el === this.wheelEl) return;
+    if (this.wheelEl && this.wheelFn) this.wheelEl.removeEventListener('wheel', this.wheelFn);
+    this.wheelEl = el;
+    if (!el) return;
+    var self = this;
+    this.wheelFn = function (e) { self.onWheel(e); };
+    el.addEventListener('wheel', this.wheelFn, { passive: false });
+  }
+
+  onWheel(e) {
+    e.preventDefault();
+    if (this.state && (this.state.detailId || this.state.reportOpen)) return;
+    var st = this.state || {};
+    var t = this.tree();
+    var focus = t.nodes[st.focus] || t.nodes.root;
+    var base = this.zoomFor(focus);
+    var uz = st.uz || 1;
+    var lim = this.zoomLimits(t, focus);
+    var z = Math.min(lim.max, Math.max(lim.min, base * uz));
+    var z2 = Math.min(lim.max, Math.max(lim.min, z * Math.exp(-e.deltaY * 0.0015)));
+    var r = e.currentTarget.getBoundingClientRect();
+    var ratio = r.width / 1280 || 1;
+    var sx = (e.clientX - r.left) / ratio - 542, sy = (e.clientY - r.top) / ratio - 420;
+    var pan = this.clampPan(st.pan || { x: 0, y: 0 }, z, focus, t);
+    var k = z2 / z;
+    var next = this.clampPan({ x: sx - k * (sx - pan.x), y: sy - k * (sy - pan.y) }, z2, focus, t);
+    var edge = z2 >= lim.max - 1e-6 ? ' · 최대 확대' : z2 <= lim.min + 1e-6 ? ' · 트리 전체 보기' : '';
+    this.setState({ uz: z2 / base, pan: next, wheeling: true, status: '확대 ×' + (Math.round(z2 * 100) / 100) + edge });
+    var self = this;
+    clearTimeout(this.wheelTimer);
+    this.wheelTimer = setTimeout(function () { self.setState({ wheeling: false }); }, 160);
+  }
+
+  panUp(e) {
+    this.holdId = null;
+    var d = this.drag;
+    this.drag = null;
+    if (!d) return;
+    try { d.el.releasePointerCapture(d.pid); } catch (err) {}
+    if (d.moved) {
+      this.justDragged = true;
+      this.setState({ dragging: false });
+      var self = this;
+      setTimeout(function () { self.justDragged = false; }, 0);
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.timers) this.timers.forEach(function (x) { clearTimeout(x); });
+    clearTimeout(this.wheelTimer);
+    this.attachWheel(null);
+    (this.genTimers || []).forEach(function (x) { clearTimeout(x); });
+    if (this.raf) cancelAnimationFrame(this.raf);
+  }
+
+  arc(cx, cy, rx, ry) {
+    return 'M' + (cx - rx).toFixed(1) + ' ' + cy.toFixed(1) + ' a' + rx + ' ' + ry + ' 0 1 0 ' + (2 * rx) + ' 0 a' + rx + ' ' + ry + ' 0 1 0 ' + (-2 * rx) + ' 0 ';
+  }
+
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var dark = st.dark !== undefined ? st.dark : !!this.props.dark;
+    var t = this.tree();
+    var focusId = st.focus && t.nodes[st.focus] ? st.focus : 'root';
+    var focus = t.nodes[focusId];
+    var loadingId = st.loadingId || null;
+    var focusAnc = this.ancestors(t, focusId);
+    var zoom = this.zoomFor(focus) * (st.uz || 1);
+    // 재검색으로 트리가 작아져도 확대·이동 범위를 벗어나지 않게 렌더 시점에 다시 맞춘다
+    var lim = this.zoomLimits(t, focus);
+    zoom = Math.min(lim.max, Math.max(lim.min, zoom));
+    var pan = this.clampPan(st.pan || { x: 0, y: 0 }, zoom, focus, t);
+    var sel = st.sel || {};
+    var selIds = Object.keys(sel).filter(function (k) { return t.nodes[k]; });
+    var selCount = selIds.length;
+    var evIndex = {};
+    selIds.forEach(function (k, i) { evIndex[k] = i + 1; });
+
+    var showKeywords = t.order.every(function (id) { var n = t.nodes[id]; return n.level === 0 || !n.expanded; });
+
+    // 궤도 진하기: 가운데 카드(자신)의 1궤도가 가장 진하고, 트리에서 멀어질수록 연해진다.
+    // 단계 = (궤도 주인 카드와 가운데 카드 사이의 가지 거리) + (그 카드의 몇 번째 궤도인지)
+    var depthOf = {};
+    t.order.forEach(function (id) { var n = t.nodes[id]; depthOf[id] = n.level; });
+    function chain(id) { var out = [id]; var cur = t.nodes[id]; while (cur && cur.parent) { out.push(cur.parent); cur = t.nodes[cur.parent]; } return out; }
+    var focusChain = chain(focusId);
+    function hops(id) {
+      var c = chain(id);
+      for (var i = 0; i < c.length; i++) {
+        var j = focusChain.indexOf(c[i]);
+        if (j >= 0) return i + j;
+      }
+      return 99;
+    }
+    var ringBuckets = ['', '', '', '', '', ''];
+    function addRing(ownerId, idx, d) {
+      var b = Math.min(5, hops(ownerId) + idx);
+      ringBuckets[b] += d;
+    }
+    addRing('root', 0, this.arc(0, 0, 300, 200));
+    if (showKeywords) addRing('root', 1, this.arc(0, 0, 440, 268));
+    var edges = '';
+    var nodes = [];
+
+    t.order.forEach(function (id) {
+      var n = t.nodes[id];
+      var s = self.sizeOf(n);
+      if (n.level > 0 && n.expanded) {
+        // 궤도는 실제 하위 카드들의 평균 거리로 그려 카드와 어긋나지 않게 한다
+        var kidIds = t.order.filter(function (k) { return t.nodes[k] && t.nodes[k].parent === id; });
+        var rr = kidIds.length ? kidIds.reduce(function (acc, k) { var c = t.nodes[k]; return acc + Math.hypot(c.x - n.x, c.y - n.y); }, 0) / kidIds.length : self.ringRadius(n);
+        addRing(id, 0, self.arc(n.x, n.y, rr, rr));
+      }
+      if (n.parent) {
+        var p = t.nodes[n.parent];
+        var ps = self.sizeOf(p);
+        var dx = n.x - p.x, dy = n.y - p.y, L = Math.hypot(dx, dy) || 1;
+        var sx = p.x + dx / L * (ps * 0.47), sy = p.y + dy / L * (ps * 0.47);
+        var ex = n.x - dx / L * (s * 0.47), ey = n.y - dy / L * (s * 0.47);
+edges += 'M' + sx.toFixed(2) + ' ' + sy.toFixed(2) + ' L' + ex.toFixed(2) + ' ' + ey.toFixed(2) + ' ';
+      }
+      var isFocus = st.detailId ? id === st.detailId : id === focusId;
+      var isLoadingChild = loadingId && n.parent === loadingId;
+      // 초점 카드의 조상·형제·자손만 또렷하게, 나머지 가지는 흐리게
+      var inPath = isFocus || focusAnc[id] || (n.parent && (focusAnc[n.parent] || n.parent === focusId)) || self.ancestors(t, id)[focusId];
+      if (st.reportOpen) isFocus = !!evIndex[id];
+      var ring = isFocus ? '3px solid var(--brand)' : n.expanded ? '2px solid var(--accent)' : '1px solid var(--node-border)';
+      if (isLoadingChild) ring = '1px dashed var(--accent-border)';
+      var base = self.baseOf(n);
+      nodes.push({
+        key: id,
+        left: (n.x - s / 2).toFixed(2) + 'px',
+        top: (n.y - s / 2).toFixed(2) + 'px',
+        size: s.toFixed(2) + 'px',
+        base: base + 'px',
+        k: (s / base).toFixed(4),
+        opacity: st.reportOpen ? (evIndex[id] ? '1' : '0.18') : isLoadingChild ? '0.45' : inPath ? '1' : '0.3',
+        evNo: st.reportOpen && evIndex[id] ? String(evIndex[id]) : '',
+        showCheck: !(st.reportOpen && evIndex[id]),
+        ring: ring,
+        bg: sel[id] ? 'var(--brand-soft)' : n.level === 0 ? 'linear-gradient(145deg, var(--brand-soft), var(--node-center))' : 'var(--node-bg)',
+        selected: !!sel[id],
+        pressed: sel[id] ? 'true' : 'false',
+        justify: 'flex-start',
+        showImg: true,
+        tone: n.tone,
+        copyPad: '0 14%',
+        lines: n.level === 0 ? 3 : 2,
+        titleFont: n.level === 0 ? '18px' : '13px',
+        metaFont: n.level === 0 ? '12px' : '10px',
+        title: isLoadingChild ? '다시 검색하는 중…' : n.title,
+        meta: isLoadingChild ? '' : n.meta,
+        badge: n.expanded,
+        pillBottom: n.level === 0 ? '22px' : '15px',
+        openDetail: function (e) { if (e) e.stopPropagation(); self.openDetail(id); },
+        aria: n.title + ' — 클릭 선택, 더블클릭 가운데로, Space를 누른 채 클릭(키보드는 Shift+Enter) 검색',
+        act: function (e) {
+          // Space를 누른 채 클릭하면 검색 (선택은 바꾸지 않는다)
+          if (self.spaceDown) { if (!e || e.detail <= 1) self.research(id); return; }
+          var d = e ? e.detail : 0;
+          if (d >= 2) {
+            // 더블클릭의 두 번째 클릭: 첫 클릭의 선택을 되돌리고 가운데로 이동
+            if (d === 2) self.toggleSelect(id);
+            if (st.detailId) self.openDetail(id); else self.center(id);
+            return;
+          }
+          self.toggleSelect(id);
+        },
+        keyDown: function (e) {
+          // 키보드만 쓰는 경우: 카드에 포커스를 두고 Shift+Enter로 검색
+          if (e.shiftKey && e.key === 'Enter') {
+            e.preventDefault();
+            if (!e.repeat) self.research(id);
+          }
+        }
+      });
+    });
+
+    // ── 미니맵: 전체 노드와 현재 화면 영역을 204×120 안에 맞춘다 ──
+    var vx0 = focus.x + (0 - 542 - pan.x) / zoom, vx1 = focus.x + (1280 - 542 - pan.x) / zoom;
+    var vy0 = focus.y + (0 - 420 - pan.y) / zoom, vy1 = focus.y + (832 - 420 - pan.y) / zoom;
+    var bx0 = vx0, bx1 = vx1, by0 = vy0, by1 = vy1;
+    t.order.forEach(function (id) {
+      var n = t.nodes[id], h = self.sizeOf(n) / 2;
+      bx0 = Math.min(bx0, n.x - h); bx1 = Math.max(bx1, n.x + h);
+      by0 = Math.min(by0, n.y - h); by1 = Math.max(by1, n.y + h);
+    });
+    var padW = (bx1 - bx0) * 0.06, padH = (by1 - by0) * 0.06;
+    bx0 -= padW; bx1 += padW; by0 -= padH; by1 += padH;
+    var mm = Math.min(204 / (bx1 - bx0), 120 / (by1 - by0));
+    var ox = bx0 - (204 / mm - (bx1 - bx0)) / 2, oy = by0 - (120 / mm - (by1 - by0)) / 2;
+    var mini = { m: mm, x0: ox, y0: oy, edges: '', dots: [] };
+    t.order.forEach(function (id) {
+      var n = t.nodes[id];
+      var px = (n.x - ox) * mm, py = (n.y - oy) * mm;
+      if (n.parent) {
+        var p = t.nodes[n.parent];
+        mini.edges += 'M' + ((p.x - ox) * mm).toFixed(1) + ' ' + ((p.y - oy) * mm).toFixed(1) + ' L' + px.toFixed(1) + ' ' + py.toFixed(1) + ' ';
+      }
+      var d = Math.max(3, self.sizeOf(n) * mm);
+      mini.dots.push({
+        left: (px - d / 2).toFixed(1) + 'px', top: (py - d / 2).toFixed(1) + 'px', size: d.toFixed(1) + 'px',
+        color: id === focusId || sel[id] ? 'var(--brand)' : n.expanded ? 'var(--accent)' : 'var(--t3)',
+        opacity: id === focusId || sel[id] || n.expanded ? '1' : '0.55'
+      });
+    });
+    mini.vp = {
+      left: ((vx0 - ox) * mm).toFixed(1) + 'px', top: ((vy0 - oy) * mm).toFixed(1) + 'px',
+      w: ((vx1 - vx0) * mm).toFixed(1) + 'px', h: ((vy1 - vy0) * mm).toFixed(1) + 'px'
+    };
+
+    // 궤도 회전: 가운데 카드의 1궤도가 가장 빠르고, 멀어질수록 느려진다.
+    // orbitRotating 번째 궤도까지만 돌고 그 뒤로는 멈춘다 (기본 3 → 4궤도부터 정지).
+    var rotating = this.props.orbitRotating != null ? this.props.orbitRotating : 3;
+    var speed = this.props.orbitSpeed != null ? this.props.orbitSpeed : 1;
+    function ringAnim(b) {
+      if (b >= rotating || speed <= 0) return 'none';
+      var dur = 8 * Math.pow(1.9, b) / speed; // 1궤도 8초, 한 단계마다 1.9배 느리게
+      return 'orbitSpin ' + dur.toFixed(2) + 's linear infinite';
+    }
+
+    // 상세 패널 내용 (닫히는 동안에도 마지막 카드 내용을 유지)
+    var detailNode = st.detailId ? t.nodes[st.detailId] : null;
+    var shown = detailNode || (st.lastDetailId && t.nodes[st.lastDetailId]) || t.nodes.root;
+    var shownSel = !!sel[shown.id];
+    var detailView = {
+      title: shown.title,
+      source: shown.meta,
+      time: shown.time || '[발행 시각]',
+      summary: shown.sum || '[기사 설명 — NAVER 검색 결과의 description이 여기에 표시됩니다]',
+      sumColor: shown.sum ? 'var(--t1)' : 'var(--t3)',
+      tone: shown.tone,
+      tags: shown.kw || [],
+      pressed: shownSel ? 'true' : 'false',
+      selLabel: shownSel ? '리포트 근거로 선택됨' : '리포트 근거로 선택',
+      selBg: shownSel ? 'var(--brand-soft)' : 'var(--surface)',
+      selBorder: shownSel ? 'var(--brand-border)' : 'var(--bd)',
+      selColor: shownSel ? 'var(--brand-fg)' : 'var(--t2)',
+      toggleSel: function () { self.toggleSelect(shown.id); },
+      reportLabel: selCount > 0 ? '선택한 ' + selCount + '건으로 리포트' : '이 뉴스로 리포트',
+      openReport: function () { self.openReport(shown.id); }
+    };
+
+    // 리포트 패널 내용과 카메라 (근거 카드들이 왼쪽 영역에 모두 보이게)
+    var phase = st.reportPhase || 0;
+    var stepLabels = ['근거 뉴스 ' + selCount + '건 본문 추출', '사건·시장 영향 분석', '종목·전략 정리'];
+    var reportView = {
+      count: selCount,
+      title: selCount > 1 ? '중동 항로 긴장과 에너지·물류 영향 리포트' : (selIds[0] ? t.nodes[selIds[0]].title + ' — 영향 리포트' : ''),
+      generating: phase < 3,
+      ready: phase >= 3,
+      steps: stepLabels.map(function (label, i) {
+        return { label: label, done: phase > i, active: phase === i, wait: phase < i, color: phase >= i ? 'var(--t1)' : 'var(--t3)' };
+      }),
+      evidence: selIds.map(function (k, i) {
+        var n = t.nodes[k];
+        return { no: i + 1, title: n.title, meta: n.meta + (n.time ? ' · ' + n.time : ''), tone: n.tone, remove: function () { self.toggleSelect(k); } };
+      })
+    };
+    var reportCam = null;
+    if (st.reportOpen && selIds.length) {
+      var rx0 = Infinity, rx1 = -Infinity, ry0 = Infinity, ry1 = -Infinity;
+      selIds.forEach(function (k) {
+        var n = t.nodes[k], h = self.sizeOf(n) / 2;
+        rx0 = Math.min(rx0, n.x - h); rx1 = Math.max(rx1, n.x + h);
+        ry0 = Math.min(ry0, n.y - h); ry1 = Math.max(ry1, n.y + h);
+      });
+      var minS = Math.min.apply(null, selIds.map(function (k) { return self.sizeOf(t.nodes[k]); }));
+      var rz = Math.min(470 / (rx1 - rx0), 560 / (ry1 - ry0), 260 / minS);
+      reportCam = 'translate(280px, 430px) scale(' + rz.toFixed(4) + ') translate(' + (-(rx0 + rx1) / 2).toFixed(2) + 'px, ' + (-(ry0 + ry1) / 2).toFixed(2) + 'px)';
+    }
+
+    var kwEdges = '';
+    if (showKeywords) {
+      kwEdges = 'M0 -122 L0 -228 M122 0 L400 0 M0 122 L0 228 M-122 0 L-400 0';
+    }
+
+    return {
+      themeClass: dark ? 'dark' : '',
+      toggleTheme: function () { self.setState({ dark: !dark }); },
+      reset: function () { self.setState({ tree: null, focus: 'root', uz: 1, pan: { x: 0, y: 0 }, loadingId: null, sel: {}, detailId: null, status: '처음 뉴스맵으로 돌아왔어요' }); self.vel = {}; self.startSim(); },
+      viewportRef: function (el) { self.attachWheel(el); },
+      spaceClass: st.spaceHeld ? 'space-mode' : '',
+      // 맵 위에 마우스를 올리면 맵이 키 입력을 받도록 포커스를 가져온다 (카드에 포커스가 있으면 그대로 둔다)
+      vpEnter: function (e) {
+        var el = e.currentTarget;
+        if (!el.contains(document.activeElement)) { try { el.focus({ preventScroll: true }); } catch (err) {} }
+      },
+      vpKeyDown: function (e) {
+        if (e.key === 'Escape' && st.reportOpen) { e.preventDefault(); self.closeReport(); return; }
+        if (e.key === 'Escape' && st.detailId) { e.preventDefault(); self.closeDetail(); return; }
+        if (e.key !== ' ' && e.code !== 'Space') return;
+        e.preventDefault(); // 스크롤·버튼 눌림 방지
+        if (!self.spaceDown) {
+          self.spaceDown = true;
+          self.setState({ spaceHeld: true, status: 'Space를 누른 채 카드를 클릭하면 그 카드 기준으로 검색해요' });
+        }
+      },
+      vpKeyUp: function (e) {
+        if (e.key !== ' ' && e.code !== 'Space') return;
+        e.preventDefault();
+        self.spaceDown = false;
+        self.setState({ spaceHeld: false });
+      },
+      vpBlur: function (e) {
+        var el = e.currentTarget;
+        setTimeout(function () {
+          if (!el.contains(document.activeElement) && self.spaceDown) { self.spaceDown = false; self.setState({ spaceHeld: false }); }
+        }, 0);
+      },
+      selCount: selCount,
+      hasSel: selCount > 0,
+      clearSel: function () { self.setState({ sel: {}, status: '선택을 모두 해제했어요' }); },
+      panDown: function (e) { self.panDown(e); },
+      panMove: function (e) { self.panMove(e); },
+      panUp: function (e) { self.panUp(e); },
+      panClickGuard: function (e) {
+        if (self.justDragged) { e.preventDefault(); e.stopPropagation(); self.justDragged = false; }
+      },
+      cursor: st.dragging ? 'grabbing' : 'grab',
+      camTransition: st.dragging ? 'none' : st.wheeling ? 'transform 90ms linear' : 'transform 700ms cubic-bezier(0.22, 1, 0.36, 1)',
+      zoomLabel: '×' + (Math.round(zoom * 100) / 100),
+      miniEdgesD: mini.edges || 'M0 0',
+      miniDots: mini.dots,
+      vp: mini.vp,
+      miniJump: function (e) {
+        var r = e.currentTarget.getBoundingClientRect();
+        var mx = (e.clientX - r.left) / r.width * 204, my = (e.clientY - r.top) / r.height * 120;
+        var wx = mini.x0 + mx / mini.m, wy = mini.y0 + my / mini.m;
+        self.setState({ pan: self.clampPan({ x: -zoom * (wx - focus.x), y: -zoom * (wy - focus.y) }, zoom, focus, t) });
+      },
+      statusText: st.status || '카드를 눌러 리포트에 쓸 뉴스를 고르세요',
+      camTransform: st.reportOpen && reportCam ? reportCam : detailNode
+        // 상세: 카드가 패널 왼쪽 영역 가운데에서 300px로 보이도록 확대
+        ? 'translate(380px, 420px) scale(' + (300 / self.sizeOf(detailNode)).toFixed(4) + ') translate(' + (-detailNode.x).toFixed(2) + 'px, ' + (-detailNode.y).toFixed(2) + 'px)'
+        : 'translate(' + (542 + pan.x).toFixed(1) + 'px, ' + (420 + pan.y).toFixed(1) + 'px) scale(' + zoom.toFixed(4) + ') translate(' + (-focus.x).toFixed(2) + 'px, ' + (-focus.y).toFixed(2) + 'px)',
+      chipText: st.reportOpen ? '레포트' : detailNode ? '뉴스 자세히 보기' : '뉴스맵',
+      showTray: selCount > 0 && !st.reportOpen,
+      openReport: function () { self.openReport(null); },
+      navReport: function (e) { if (e) e.preventDefault(); self.openReport(st.detailId || null); },
+      closeReport: function () { self.closeReport(); },
+      reportHidden: st.reportOpen ? 'false' : 'true',
+      reportTransform: st.reportOpen ? 'translateX(0)' : 'translateX(104%)',
+      reportVisibility: st.reportOpen ? 'visible' : 'hidden',
+      reportVisDelay: st.reportOpen ? '0s' : '560ms',
+      r: reportView,
+      trayLeft: detailNode ? '380px' : '50%',
+      detailHidden: detailNode ? 'false' : 'true',
+      panelTransform: detailNode ? 'translateX(0)' : 'translateX(104%)',
+      panelVisibility: detailNode ? 'visible' : 'hidden',
+      panelVisDelay: detailNode ? '0s' : '520ms',
+      closeDetail: function () { self.closeDetail(); },
+      d: detailView,
+      ringsD0: ringBuckets[0] || 'M0 0',
+      ringsD1: ringBuckets[1] || 'M0 0',
+      ringsD2: ringBuckets[2] || 'M0 0',
+      ringsD3: ringBuckets[3] || 'M0 0',
+      ringsD4: ringBuckets[4] || 'M0 0',
+      ringsD5: ringBuckets[5] || 'M0 0',
+      ringAnim0: ringAnim(0), ringAnim1: ringAnim(1), ringAnim2: ringAnim(2),
+      ringAnim3: ringAnim(3), ringAnim4: ringAnim(4), ringAnim5: ringAnim(5),
+      edgesD: edges || 'M0 0',
+      kwEdgesD: kwEdges || 'M0 0',
+      showKeywords: showKeywords,
+      nodes: nodes
+    };
+  }
+}
+</script>
+</body>
+</html>
