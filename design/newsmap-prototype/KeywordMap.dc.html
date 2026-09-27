@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>키워드 맵</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+.app{--surface:#ffffff;--elevated:#ffffff;--sunken:#f2f4f7;--inset:#e7eaf0;--t1:#15181f;--t2:#525a67;--t3:#7d8695;--on-brand:#ffffff;--bs:#e6e9ee;--bd:#d5dae2;--brand:#5346d4;--brand-hover:#4438b4;--brand-fg:#4438b4;--brand-soft:#edebfc;--brand-border:#c7c0f5;--accent:#0e8fab;--node-bg:#edf0f6;--node-center:#e3e8f2;--sh-sm:0 1px 2px rgba(15,18,25,.06),0 1px 1px rgba(15,18,25,.04);--sh-md:0 4px 12px rgba(15,18,25,.08),0 1px 3px rgba(15,18,25,.05);--sh-lg:0 12px 28px rgba(15,18,25,.12),0 4px 8px rgba(15,18,25,.06);--sh-node:0 10px 24px rgba(15,18,25,.1);--sh-node-hover:0 18px 40px rgba(15,18,25,.18);font-family:'Pretendard Variable',Pretendard,'Noto Sans KR',-apple-system,sans-serif;color:var(--t1)}
+.app.dark{--surface:#11141b;--elevated:#1a1e28;--sunken:#151922;--inset:#1f2430;--t1:#eef0f5;--t2:#a4acbb;--t3:#737d8d;--bs:#212633;--bd:#2d3442;--brand:#7b6dfa;--brand-hover:#8d80ff;--brand-fg:#a79cff;--brand-soft:#1e1a3d;--brand-border:#3b3378;--accent:#35c2de;--node-bg:#1c212c;--node-center:#232936;--sh-sm:0 1px 2px rgba(0,0,0,.5);--sh-md:0 4px 12px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.4);--sh-lg:0 12px 28px rgba(0,0,0,.55),0 4px 8px rgba(0,0,0,.4);--sh-node:0 10px 24px rgba(0,0,0,.5);--sh-node-hover:0 18px 40px rgba(0,0,0,.62)}
+.kw:hover{color:var(--brand-fg) !important;background:var(--brand-soft) !important;border-color:var(--brand-border) !important;box-shadow:var(--sh-node-hover) !important}
+.nav-btn:hover{background:var(--brand-soft) !important;color:var(--brand-fg) !important}
+.btn-brand:hover{background:var(--brand-hover) !important}
+a{color:var(--brand-fg)}a:hover{color:var(--brand-hover)}
+</style>
+</helmet>
+<div class="app {{themeClass}}" style="position: relative; width: 1280px; height: 832px; overflow: hidden; background: var(--surface)">
+<header style="position: absolute; left: 24px; right: 24px; top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; z-index: 20">
+<button type="button" onClick="{{toggleTheme}}" aria-label="다크 모드로 전환" style="width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--bs); border-radius: 999px; background: var(--inset); color: var(--t2); cursor: pointer; padding: 0">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+</button>
+<div style="min-width: 124px; box-sizing: border-box; padding: 8px 16px; border-radius: 999px; background: var(--inset); border: 1px solid var(--bs); color: var(--t2); text-align: center; font-size: 13px; font-weight: 700">키워드 맵</div>
+</header>
+
+<div style="position: absolute; left: 175px; top: 102px; width: 930px; height: 620px">
+<svg width="930" height="620" viewBox="0 0 930 620" aria-hidden="true" style="position: absolute; left: 0; top: 0; overflow: visible">
+<ellipse cx="465" cy="310" rx="245" ry="180" fill="none" stroke="var(--bd)" stroke-width="1.25" stroke-dasharray="6 10"></ellipse>
+<ellipse cx="465" cy="310" rx="352" ry="250" fill="none" stroke="var(--bd)" stroke-width="1.25" stroke-dasharray="6 10"></ellipse>
+</svg>
+
+<a href="NewsMap.dc.html" class="kw" aria-label="중동 전황 관련 뉴스맵 열기" style="position: absolute; left: 361px; top: 206px; width: 208px; height: 208px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--brand-border); border-radius: 999px; background: linear-gradient(145deg, var(--brand-soft), var(--node-center)); color: var(--t1); font-size: 26px; font-weight: 700; line-height: 1.24; letter-spacing: -0.02em; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">중동 전황</a>
+
+<a href="NewsMap.dc.html" class="kw" aria-label="원유 관련 뉴스맵 열기" style="position: absolute; left: 579px; top: 124px; width: 118px; height: 118px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 17px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">원유</a>
+<a href="NewsMap.dc.html" class="kw" aria-label="해운 관련 뉴스맵 열기" style="position: absolute; left: 233px; top: 124px; width: 118px; height: 118px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 17px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">해운</a>
+<a href="NewsMap.dc.html" class="kw" aria-label="방산 관련 뉴스맵 열기" style="position: absolute; left: 233px; top: 378px; width: 118px; height: 118px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 17px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">방산</a>
+<a href="NewsMap.dc.html" class="kw" aria-label="환율 관련 뉴스맵 열기" style="position: absolute; left: 579px; top: 378px; width: 118px; height: 118px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 17px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">환율</a>
+
+<a href="NewsMap.dc.html" class="kw" aria-label="정유 관련 뉴스맵 열기" style="position: absolute; left: 422px; top: 17px; width: 86px; height: 86px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 13px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">정유</a>
+<a href="NewsMap.dc.html" class="kw" aria-label="에너지 ETF 관련 뉴스맵 열기" style="position: absolute; left: 774px; top: 267px; width: 86px; height: 86px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 13px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">에너지 ETF</a>
+<a href="NewsMap.dc.html" class="kw" aria-label="운임 관련 뉴스맵 열기" style="position: absolute; left: 422px; top: 517px; width: 86px; height: 86px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 13px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">운임</a>
+<a href="NewsMap.dc.html" class="kw" aria-label="물류비 관련 뉴스맵 열기" style="position: absolute; left: 70px; top: 267px; width: 86px; height: 86px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1px solid var(--bd); border-radius: 999px; background: var(--node-bg); color: var(--t2); font-size: 13px; font-weight: 700; line-height: 1.24; text-align: center; word-break: keep-all; text-decoration: none; box-shadow: var(--sh-node)">물류비</a>
+</div>
+
+<div style="position: absolute; left: 470px; bottom: 104px; width: 340px; min-height: 48px; box-sizing: border-box; border-radius: 999px; background: var(--inset); border: 1px solid var(--bd); color: var(--t1); display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 12px; padding: 4px 4px 4px 16px; font-weight: 700; box-shadow: var(--sh-md)">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--t3)"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">중동 전황</span>
+<a href="NewsMap.dc.html" class="btn-brand" style="min-width: 56px; min-height: 40px; box-sizing: border-box; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand); color: var(--on-brand); font-weight: 700; font-size: 15px; text-decoration: none">열기</a>
+</div>
+
+<nav aria-label="화면 컨트롤" style="position: absolute; left: 549px; bottom: 40px; display: flex; gap: 8px; padding: 4px; border-radius: 999px; border: 1px solid var(--bs); background: var(--elevated); box-shadow: var(--sh-lg); z-index: 30">
+<a href="Main.dc.html" class="nav-btn" aria-label="뒤로가기" style="width: 52px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--t2)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg></a>
+<button type="button" disabled aria-label="리포트" style="width: 52px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; background: transparent; color: var(--t2); opacity: 0.35; padding: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8M16 13H8M16 17H8"></path></svg></button>
+<a href="Main.dc.html" class="nav-btn" aria-label="검색" style="width: 52px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; color: var(--t2)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":832}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.state && this.state.dark !== undefined ? this.state.dark : !!this.props.dark;
+    return {
+      themeClass: dark ? 'dark' : '',
+      toggleTheme: () => this.setState({ dark: !dark })
+    };
+  }
+}
+</script>
+</body>
+</html>
