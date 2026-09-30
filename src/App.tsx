@@ -63,6 +63,7 @@ function App() {
   const [detailNewsId, setDetailNewsId] = useState(clusters[0].mainNewsId);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   const [isExpandingMap, setIsExpandingMap] = useState(false);
+  const newsMapRequest = useRef(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   /**
    * apiAdapter 의 클러스터 캐시는 모듈 레벨 Map 이라 갱신해도 React 가 모른다.
@@ -159,9 +160,9 @@ function App() {
       // 검색 결과는 "검색어에 걸린 기사"다. 맵에는 "중심 기사와 이어진 기사"를 건다.
       try {
         setLoadingLabel('연관 뉴스를 잇는 중…');
-        await loadNeighbours(nextCluster.mainNewsId, nextCluster.id);
-      } catch {
-        // graph/related 실패 — 검색 결과로 만든 연관 목록을 그대로 쓴다
+        if (nextCluster.mainNewsId) await loadNeighbours(nextCluster.mainNewsId, nextCluster.id);
+      } catch (error) {
+        setErrorMsg(errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.'));
       }
 
       navigate('newsMap');
@@ -201,7 +202,7 @@ function App() {
     }
   };
 
-  /** 중심 뉴스의 이웃을 그래프 API 로 받아 맵을 다시 구성한다. 실패는 호출부가 처리한다. */
+  /** 중심 뉴스의 선정된 이웃을 받아 맵을 다시 구성한다. 실패는 호출부가 처리한다. */
   const loadNeighbours = (newsId: string, clusterId: string) =>
     fetchAndCacheNewsMap(newsId, clusterId, MAX_RELATED_NODES);
 
@@ -213,16 +214,20 @@ function App() {
    * 가리므로 맵 위에 작은 상태 표시만 낸다.
    */
   const focusNews = async (newsId: string) => {
+    const request = ++newsMapRequest.current;
     const clusterId = activeCluster.id;
+    setErrorMsg(null);
     setCenterNewsId(newsId);
     setIsExpandingMap(true);
     try {
       await loadNeighbours(newsId, clusterId);
-      setClusterRevision((v) => v + 1);
-    } catch {
-      // 이웃을 못 받으면 지금 클러스터에 있는 뉴스로 계속 보여준다
+    } catch (error) {
+      if (request === newsMapRequest.current) {
+        setErrorMsg(errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.'));
+      }
     } finally {
-      setIsExpandingMap(false);
+      setClusterRevision((v) => v + 1);
+      if (request === newsMapRequest.current) setIsExpandingMap(false);
     }
   };
 
@@ -905,7 +910,8 @@ function getSearchKeywordNodes(cluster: IssueCluster): string[] {
  * staticNewsCards[0] 을 돌려주므로 여기서는 findKnownNews 를 쓴다.
  */
 function getVisibleNews(cluster: IssueCluster, centerNewsId: string): NewsCard[] {
-  return [cluster.mainNewsId, ...cluster.relatedNewsIds]
+  if (cluster.mainNewsId !== centerNewsId) return [];
+  return cluster.relatedNewsIds
     .filter((id) => id && id !== centerNewsId)
     .map(findKnownNews)
     .filter((news): news is NewsCard => news !== undefined)

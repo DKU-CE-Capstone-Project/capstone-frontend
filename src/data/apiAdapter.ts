@@ -77,25 +77,6 @@ type ApiSourceResponse = {
   thumbnail_url?: string;
 };
 
-type ApiGraphNode = {
-  news_id: string;
-  title: string;
-  summary: string;
-  distance: number;
-  is_center?: boolean;
-};
-
-type ApiGraphResponse = {
-  center_node: ApiGraphNode;
-  nodes: ApiGraphNode[];
-  edges: Array<{
-    source: string;
-    target: string;
-    relation_type: string;
-    distance: number;
-  }>;
-};
-
 type ApiRelatedNewsItem = {
   news_id: string;
   title: string;
@@ -278,58 +259,35 @@ export async function fetchAndCacheNewsCluster(term: string): Promise<IssueClust
 }
 
 /**
- * 중심 뉴스의 "이웃"을 그래프 API 로 가져와 클러스터를 다시 구성한다.
- *
- * `/news/search` 결과는 검색어에 걸린 기사라 서로 연관이 없을 수 있다.
- * 뉴스맵이 보여줘야 하는 건 "이 기사와 이어진 기사"이므로 related/graph 를 쓴다.
- *
- * related 를 먼저 쓰고 모자라면 graph 의 이웃으로 채운다. 둘 다 distance 를
- * 주므로 가까운 것부터 앞에 둔다 — 맵은 상한을 넘는 노드를 잘라내므로
- * 순서가 곧 우선순위다.
- *
- * limit 기본값은 맵이 그릴 수 있는 연관 노드 수(MAX_RELATED_NODES)와 맞춰 둔 값이다.
- * 레이아웃 모듈을 데이터 어댑터가 import 하지 않도록 호출부에서 넘긴다.
+ * /related가 선정한 순서와 FREE 상한을 그대로 유지한다.
+ * 검색 후보·다른 API로 부족한 수를 보충하지 않는다. 새 중심을 평가하는 동안과
+ * 실패 시에는 이전 중심의 연관 목록을 비운다.
  */
+const newsMapRequests = new Map<string, number>();
+
 export async function fetchAndCacheNewsMap(
   newsId: string,
   currentClusterId: string,
   limit = 6,
 ): Promise<IssueCluster> {
   const currentCluster = resolveCluster(currentClusterId);
-  const [graphData, relatedData] = await Promise.all([
-    apiGet<ApiGraphResponse>(
-      `/news/${encodeURIComponent(newsId)}/graph?depth=2&limit=${limit * 2}&include_distance=true`,
-    ),
-    apiGet<ApiRelatedResponse>(
-      `/news/${encodeURIComponent(newsId)}/related?limit=${limit}&tier=FREE`,
-    ),
-  ]);
-
-  cacheNewsCard(graphNodeToNewsCard(graphData.center_node, currentCluster.query, 0));
+  const request = (newsMapRequests.get(currentClusterId) ?? 0) + 1;
+  newsMapRequests.set(currentClusterId, request);
+  dynClusters.set(currentClusterId, { ...currentCluster, mainNewsId: newsId, relatedNewsIds: [] });
+  const relatedData = await apiGet<ApiRelatedResponse>(
+    `/news/${encodeURIComponent(newsId)}/related?limit=${limit}&tier=FREE`,
+  );
+  if (newsMapRequests.get(currentClusterId) !== request) return resolveCluster(currentClusterId);
 
   const relatedIds: string[] = [];
 
-  [...relatedData.related_news]
-    .sort((a, b) => a.distance - b.distance)
+  relatedData.related_news
     .slice(0, limit)
     .forEach((item, index) => {
       const card = relatedItemToNewsCard(item, currentCluster.query, index + 1);
       cacheNewsCard(card);
       relatedIds.push(card.id);
     });
-
-  if (relatedIds.length < limit) {
-    const neighbours = graphData.nodes
-      .filter((node) => node.news_id !== newsId && !relatedIds.includes(node.news_id))
-      .sort((a, b) => a.distance - b.distance);
-
-    for (const node of neighbours) {
-      const card = graphNodeToNewsCard(node, currentCluster.query, relatedIds.length + 1);
-      cacheNewsCard(card);
-      relatedIds.push(card.id);
-      if (relatedIds.length >= limit) break;
-    }
-  }
 
   const nextCluster: IssueCluster = {
     ...currentCluster,
@@ -427,7 +385,7 @@ function cacheSearchAsCluster({
     id: clusterId,
     query,
     mainNewsId: newsIds[0] ?? '',
-    relatedNewsIds: newsIds.slice(1),
+    relatedNewsIds: [],
     recommendedKeywords: keywords.length > 0 ? keywords : staticClusters[0].recommendedKeywords,
     reportId: `${clusterId}-report-placeholder`,
   };
@@ -564,26 +522,6 @@ function apiCardToNewsCard(card: ApiNewsCard, query: string, index: number): New
     keywords: unique([query, ...card.related_stock_names]).slice(0, 4),
     relatedStockSymbols: card.related_stock_names,
     sentiment: 'neutral',
-  };
-}
-
-function graphNodeToNewsCard(node: ApiGraphNode, query: string, index: number): NewsCard {
-  const existing = findKnownNews(node.news_id);
-  return {
-    id: node.news_id,
-    title: node.title,
-    // /graph 응답에는 출처가 없다. 캐시에 없으면 비워 둔다 — 'News API' 같은
-    // 문구를 넣으면 화면에서 진짜 언론사 이름처럼 보인다.
-    source: existing?.source ?? '',
-    publishedAt: existing?.publishedAt ?? '',
-    summary: node.summary,
-    mockOriginalBody: existing?.mockOriginalBody ?? '',
-    sourceUrl: existing?.sourceUrl,
-    thumbnailTone: existing?.thumbnailTone ?? pickTone(node.title, index),
-    imageUrl: existing?.imageUrl ?? FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
-    keywords: existing?.keywords ?? unique([query, ...node.title.split(/\s+/)]).slice(0, 4),
-    relatedStockSymbols: existing?.relatedStockSymbols ?? [],
-    sentiment: existing?.sentiment ?? 'neutral',
   };
 }
 

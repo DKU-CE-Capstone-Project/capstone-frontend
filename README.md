@@ -2,7 +2,7 @@
 
 실시간 뉴스 기반 멀티 에이전트 투자 판단 지원 시스템의 프론트엔드입니다.
 
-React, TypeScript, Vite 기반으로 구현되어 있습니다. 현재 `codex/news-session-20260918`의 변경은 [프론트엔드 PR #7](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/7)에서 검토 중이며 코드 `main`에는 아직 병합되지 않았습니다. 연결 대상은 [백엔드 PR #6](https://github.com/DKU-CE-Capstone-Project/capstone-backend/pull/6)의 `/api/v1`이며, 요청·응답 형식은 [뉴스 세션 API 명세](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-api-spec.md)를 따릅니다. 운영 서버의 현재 상태는 확인하지 않았습니다.
+React, TypeScript, Vite 기반으로 구현되어 있습니다. 이 README는 **2026-09-30 로컬 `article-api` 브랜치**의 화면·데이터 처리를 설명합니다. 프로젝트 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)이며 기존 뉴스 세션 경로의 2026-09-21 병합 기록과 이번 로컬 뉴스맵 변경을 구분합니다. 백엔드 `article-api`의 `/api/v1`에 연결하며 [API 명세](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-api-spec.md)의 날짜별 계약을 참고합니다. 이번 변경의 원격 반영·운영 배포는 수행하지 않았습니다.
 
 ## 작업 브랜치의 뉴스 경로
 
@@ -10,7 +10,7 @@ React, TypeScript, Vite 기반으로 구현되어 있습니다. 현재 `codex/ne
 검색은 20건을 요청하고, NAVER 뉴스 URL이 있으며 정치·사회 제외 조건을 통과한 결과만 표시한다. 필터 결과가 적어도 샘플 기사로 채우지 않는다. 검색 실패와 결과 없음은 별도로 안내한다.
 
 - 키워드맵: 입력어와 백엔드의 고정 추천 키워드를 표시한다. 뉴스 검색은 키워드 노드를 열 때 시작한다.
-- 뉴스맵: NAVER 검색 결과의 첫 기사와 뒤따르는 최대 3건을 고정 위치에 표시한다. `graph`·`related` API는 현재 화면에서 호출하지 않는다.
+- 뉴스맵: NAVER 검색 결과의 첫 기사를 중심으로 두고 `/related?tier=FREE`에서 선정된 주변 기사를 서버 순서대로 표시한다. FREE 상한은 주변 최대 3건이며 중심까지 합치면 최대 4건이다.
 - 뉴스 상세: 검색 응답에 저장된 **description만 표시**한다. 본문 API를 추가 호출하지 않으며, 기사를 바꾸면 스크롤을 초기화한다.
 - 리포트 보기: 뉴스맵에서는 중심 기사, 상세에서는 **선택한 기사**의 ID로 리포트를 요청한다. 이때 백엔드가 NAVER URL에서 Diffbot으로 본문 1건을 추출한다.
 - QR 코드 이미지는 백엔드에서 제외한다. 원문 링크는 별도 영역에 제공한다.
@@ -18,7 +18,7 @@ React, TypeScript, Vite 기반으로 구현되어 있습니다. 현재 `codex/ne
 
 API 비밀키는 백엔드에만 둔다. Gemini 3.5 Flash-Lite / Flex 설정 역시 백엔드의 책임이다. Flex 요청은 오래 걸릴 수 있어 Nginx의 API 대기 시간을 1500초로 맞췄다. MongoDB 실제 준비 상태는 `/ready`로 프록시한다.
 
-백엔드 카드 응답에는 기사 `keywords`·`categories`가 있지만, 현재 프론트 카드 태그는 검색어와 `related_stock_names`로 만든다. 추출된 기사 메타데이터를 화면 태그에 표시하는 연동은 아직 없다. 뉴스 기반 연관 키워드·기사 선정 알고리즘은 [보류 결정](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/04-roadmap.md#마인드맵-알고리즘-보류-결정-2026-09-19)에 따른다.
+백엔드 카드 응답에는 기사 `keywords`·`categories`가 있지만, 현재 프론트 카드 태그는 검색어와 `related_stock_names`로 만든다. 추출된 기사 메타데이터를 화면 태그에 표시하는 연동은 아직 없다. 이번에는 주변 기사 선정·데이터 처리만 적용했으며 뉴스 기반 연관 키워드, 다단계 확장, 새 프론트 프로토타입 포팅은 포함하지 않는다.
 
 ## 기술 스택
 
@@ -113,12 +113,15 @@ VITE_API_BASE=http://127.0.0.1:8000
 
 3. 뉴스맵
    - 키워드 노드를 열 때 `GET /api/v1/news/search`로 최대 20건을 요청하고, 필터 후 남은 첫 결과를 중심으로 둡니다.
-   - 중심 뉴스가 정해지면 `GET /api/v1/news/{news_id}/related`와
-     `GET /api/v1/news/{news_id}/graph`로 **그 뉴스와 이어진 기사**를 가져옵니다.
-     `/news/search` 결과는 "검색어에 걸린 기사"라 서로 연관이 없을 수 있어서,
-     맵에는 그래프 이웃을 겁니다. 두 API가 실패하면 검색 결과를 그대로 씁니다.
-   - `related`를 먼저 쓰고 모자라면 `graph`의 이웃으로 채웁니다. 둘 다 `distance`를
-     주므로 가까운 것부터 배치합니다 (상한 6개, 넘으면 잘라냅니다).
+   - 중심 뉴스가 정해지면 `GET /api/v1/news/{news_id}/related?limit=6&tier=FREE`로
+     백엔드가 평가·필터·정렬한 기사를 가져옵니다. 검색 결과 캐시는 후보 보관용이며
+     평가를 통과하기 전에는 연관 기사로 표시하지 않습니다.
+   - 서버 순서를 유지하며 `distance`로 다시 정렬하거나 `/graph`로 채우지 않습니다.
+     레이아웃은 최대 6개를 지원하지만 현재 FREE 요청은 **주변 최대 3개**를 받습니다.
+     기준을 통과한 기사가 2개면 2개만 표시합니다. `tier=FREE`는 프론트에 명시돼 있으며
+     실제 구독 상태 확인·유료 전환 기능은 아직 없습니다.
+   - 중심 변경·요청 실패 시 이전 연관 목록을 비웁니다. 실패하면 오류를 표시하고
+     최초 검색 결과로 대체하지 않습니다. 이전 중심의 늦은 응답도 새 목록을 덮어쓰지 않습니다.
    - 연관 뉴스는 원형 노드로 표시되며, **노드를 누르면 그 뉴스가 맵 중심으로 이동하고
      그 뉴스의 이웃을 다시 받아옵니다.** 중심은 먼저 바꿔 재배치 애니메이션이 바로 돌고,
      이웃은 뒤이어 채워집니다. 그동안 맵 위에 작은 상태 표시만 나옵니다.
@@ -237,7 +240,16 @@ VITE_API_BASE='' npm run build
 docker build --platform linux/amd64 --build-arg VITE_API_BASE= -t econmind-frontend:release-20260918 .
 ```
 
-2026-09-18 로컬 타입 검사·Vite 빌드와 amd64 Docker 빌드를 확인했습니다. 이는 당시 브랜치 빌드 기록이며 현재 운영 배포 결과를 뜻하지 않습니다. 최신 브랜치 검증 범위는 [검증 기록](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/99-verification.md#2026-09-20-뉴스-세션-브랜치-api-검증)을 참고합니다.
+2026-09-18 로컬 타입 검사·Vite 빌드와 amd64 Docker 빌드를 확인했습니다. 이는 당시 브랜치 빌드 기록이며 현재 운영 배포 결과를 뜻하지 않습니다. 날짜별 검증 범위는 정본 `docs/99-verification.md`를 참고합니다.
+
+## 뉴스맵 로컬 검증 (2026-09-30)
+
+```bash
+npm test
+npm run build
+```
+
+[실제 데이터 어댑터 테스트](scripts/test-news-map.mjs) 5개와 TypeScript 타입 검사·Vite 빌드를 통과했습니다. HTTP 응답을 mock해 서버 순서 유지, `/graph` 보충 없음, 빈 결과 유지, 실패 시 목록 제거·예외 전달, 이전 중심 응답 차단을 확인합니다. App의 오류 표시 코드를 확인했으며 실제 브라우저 화면 조작·Gemini 의미적 선정 품질·이번 Docker 이미지 빌드·운영 배포는 검증하지 않았습니다.
 
 ## 빌드 결과 미리보기
 
@@ -311,9 +323,9 @@ VITE_API_BASE=http://127.0.0.1:8000 npm run dev
 ### 주의
 
 - 리포트·전략은 메모리에만 저장된다. 컨테이너를 내리면 사라진다.
-- 응답 본문에 `AI 분석 준비 중`, `생성하지 못했습니다`, `기본 포트폴리오 전략` 이
-  들어가면 프론트(`hasBackendFallbackText`)가 응답을 버리고 자체 mock 리포트로
-  갈아탄다. mock 데이터를 고칠 때 이 표현을 쓰지 말 것.
+- 응답 본문에 `AI 분석 준비 중`, `생성하지 못했습니다`, `기본 포트폴리오 전략`이
+  들어가면 프론트(`hasBackendFallbackText`)가 성공 응답으로 표시하지 않고 오류를 냅니다.
+  mock 데이터를 고칠 때 이 표현을 쓰지 말 것.
 
 ### 컨테이너 헬스체크
 
@@ -337,12 +349,13 @@ VITE_API_BASE=http://127.0.0.1:8000 npm run dev
 
 - `GET /api/v1/keywords/recommended`
 - `GET /api/v1/news/search`
+- `GET /api/v1/news/{news_id}/related?limit=6&tier=FREE`
 - `POST /api/v1/reports`
 - `GET /api/v1/reports/{report_id}`
 - `POST /api/v1/strategies`
 - `GET /api/v1/strategies/{strategy_id}`
 
-`apiAdapter.ts`에는 `/news/{news_id}/graph`·`/related`·`/source` 호출 함수가 남아 있지만 현재 화면은 사용하지 않습니다. 프록시된 `/ready`는 운영 점검 경로이며 화면 요청에는 포함되지 않습니다.
+`/graph`는 현재 화면에서 호출하지 않으며 `/source` 호출 함수는 어댑터에 남아 있지만 상세 진입은 캐시 description을 사용합니다. 프록시된 `/ready`는 운영 점검 경로이며 화면 요청에는 포함되지 않습니다. 별도 mock API의 topic 기반 이웃 응답은 실제 백엔드 임베딩 선정 구현과 다릅니다.
 
 ## 주의 사항
 
