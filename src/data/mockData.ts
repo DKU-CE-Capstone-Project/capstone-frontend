@@ -11,6 +11,7 @@ export type NewsCard = {
   thumbnailTone: 'oil' | 'chip' | 'ai' | 'defense' | 'shipping' | 'currency';
   imageUrl: string;
   keywords: string[];
+  categories?: string[];
   relatedStockSymbols: string[];
   sentiment: Sentiment;
 };

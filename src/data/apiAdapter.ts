@@ -47,10 +47,12 @@ type ApiNewsCard = {
   title: string;
   summary: string;
   thumbnail_url: string;
-  source_name: string;
-  published_at: string;
-  related_stock_names: string[];
+  source_name?: string;
+  published_at?: string;
+  related_stock_names?: string[];
   source_url?: string;
+  keywords?: string[];
+  categories?: string[];
 };
 
 type ApiSearchResponse = {
@@ -75,13 +77,11 @@ type ApiSourceResponse = {
   original_body?: string;
   description?: string;
   thumbnail_url?: string;
+  keywords?: string[];
+  categories?: string[];
 };
 
-type ApiRelatedNewsItem = {
-  news_id: string;
-  title: string;
-  summary: string;
-  thumbnail_url: string;
+type ApiRelatedNewsItem = ApiNewsCard & {
   relevance_score?: number | null;
   distance: number;
 };
@@ -284,8 +284,8 @@ export async function fetchAndCacheNewsMap(
   relatedData.related_news
     .slice(0, limit)
     .forEach((item, index) => {
-      const card = relatedItemToNewsCard(item, currentCluster.query, index + 1);
-      cacheNewsCard(card);
+      const card = apiCardToNewsCard(item, currentCluster.query, index + 1);
+      dynNews.set(card.id, card);
       relatedIds.push(card.id);
     });
 
@@ -301,16 +301,20 @@ export async function fetchAndCacheNewsMap(
 
 export async function fetchAndCacheNewsSource(newsId: string): Promise<NewsCard> {
   const source = await apiGet<ApiSourceResponse>(`/news/${encodeURIComponent(newsId)}/source`);
-  const existing = resolveNews(newsId);
-  const updated: NewsCard = {
-    ...existing,
-    title: source.original_title || existing.title,
-    source: source.source_name || existing.source,
-    publishedAt: formatDate(source.published_at) || existing.publishedAt,
-    mockOriginalBody: source.original_body ?? '',
-    imageUrl: source.thumbnail_url || existing.imageUrl,
-    sourceUrl: source.source_url || existing.sourceUrl,
-  };
+  const existing = findKnownNews(newsId);
+  const updated = apiCardToNewsCard({
+    news_id: newsId,
+    title: source.original_title,
+    description: source.description,
+    summary: existing?.summary ?? '',
+    source_name: source.source_name,
+    published_at: source.published_at,
+    source_url: source.source_url,
+    thumbnail_url: source.thumbnail_url ?? '',
+    keywords: source.keywords,
+    categories: source.categories,
+  }, '', 0);
+  updated.mockOriginalBody = source.original_body ?? existing?.mockOriginalBody ?? '';
   dynNews.set(newsId, updated);
   return updated;
 }
@@ -378,7 +382,7 @@ function cacheSearchAsCluster({
   const keywords = unique([
     query,
     ...recommendedKeywords,
-    ...cards.flatMap((card) => card.related_stock_names),
+    ...cards.flatMap((card) => card.related_stock_names ?? []),
   ]).slice(0, 11);
 
   const cluster: IssueCluster = {
@@ -509,58 +513,24 @@ function hasBackendFallbackText(
 }
 
 function apiCardToNewsCard(card: ApiNewsCard, query: string, index: number): NewsCard {
+  const existing = findKnownNews(card.news_id);
+  const stocks = card.related_stock_names ?? existing?.relatedStockSymbols ?? [];
   return {
     id: card.news_id,
     title: card.title,
-    source: card.source_name,
-    publishedAt: formatDate(card.published_at),
-    summary: card.description ?? card.summary,
-    mockOriginalBody: '',
-    sourceUrl: card.source_url,
-    thumbnailTone: pickTone(card.title, index),
-    imageUrl: card.thumbnail_url || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
-    keywords: unique([query, ...card.related_stock_names]).slice(0, 4),
-    relatedStockSymbols: card.related_stock_names,
-    sentiment: 'neutral',
-  };
-}
-
-function relatedItemToNewsCard(item: ApiRelatedNewsItem, query: string, index: number): NewsCard {
-  const existing = findKnownNews(item.news_id);
-  return {
-    id: item.news_id,
-    title: item.title,
-    // /related 응답에도 출처가 없다. 위와 같은 이유로 비워 둔다.
-    source: existing?.source ?? '',
-    publishedAt: existing?.publishedAt ?? '',
-    summary: item.summary,
+    source: card.source_name ?? existing?.source ?? '',
+    publishedAt: card.published_at !== undefined ? formatDate(card.published_at) : existing?.publishedAt ?? '',
+    summary: card.description || card.summary,
     mockOriginalBody: existing?.mockOriginalBody ?? '',
-    sourceUrl: existing?.sourceUrl,
-    thumbnailTone: existing?.thumbnailTone ?? pickTone(item.title, index),
-    imageUrl: item.thumbnail_url || existing?.imageUrl || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
-    keywords: existing?.keywords ?? unique([query, ...item.title.split(/\s+/)]).slice(0, 4),
-    relatedStockSymbols: existing?.relatedStockSymbols ?? [],
+    sourceUrl: card.source_url ?? existing?.sourceUrl,
+    thumbnailTone: existing?.thumbnailTone ?? pickTone(card.title, index),
+    imageUrl: card.thumbnail_url || existing?.imageUrl || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
+    // Missing fields support older servers; explicit empty arrays clear stale tags.
+    keywords: card.keywords ?? existing?.keywords ?? unique([query, ...stocks]).filter(Boolean).slice(0, 4),
+    categories: card.categories ?? existing?.categories ?? [],
+    relatedStockSymbols: stocks,
     sentiment: existing?.sentiment ?? 'neutral',
   };
-}
-
-function mergeNewsCard(existing: NewsCard, next: NewsCard): NewsCard {
-  return {
-    ...existing,
-    ...next,
-    source: next.source || existing.source,
-    publishedAt: next.publishedAt || existing.publishedAt,
-    mockOriginalBody: next.mockOriginalBody || existing.mockOriginalBody,
-    imageUrl: next.imageUrl || existing.imageUrl,
-    keywords: next.keywords.length > 0 ? next.keywords : existing.keywords,
-    relatedStockSymbols:
-      next.relatedStockSymbols.length > 0 ? next.relatedStockSymbols : existing.relatedStockSymbols,
-  };
-}
-
-function cacheNewsCard(next: NewsCard): void {
-  const existing = findKnownNews(next.id);
-  dynNews.set(next.id, existing ? mergeNewsCard(existing, next) : next);
 }
 
 /**

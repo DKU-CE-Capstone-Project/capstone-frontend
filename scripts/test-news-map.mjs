@@ -84,3 +84,87 @@ test('late response for previous center does not replace current ranking', async
   assert.equal(adapter.resolveCluster('test').mainNewsId, 'new-center');
   assert.deepEqual(adapter.resolveCluster('test').relatedNewsIds, ['new-neighbour']);
 });
+
+function fullCard(news_id = 'new-neighbour') {
+  return { ...item(news_id), title: 'HBM 생산 확대', description: 'NAVER 기사 설명',
+    summary: 'Older summary', source_name: 'publisher.test',
+    source_url: `https://n.news.naver.com/article/214/${news_id}`,
+    published_at: '2026-09-30T09:00:00Z', thumbnail_url: 'https://publisher.test/news.jpg',
+    keywords: ['HBM', 'AI'], categories: ['반도체'], related_stock_names: [] };
+}
+
+test('uncached related article contains detail metadata without another request', async () => {
+  cluster();
+  const card = fullCard();
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return ok({ related_news: [card] });
+  };
+  await adapter.fetchAndCacheNewsMap('center', 'test');
+  const result = adapter.findKnownNews(card.news_id);
+  assert.equal(result.source, card.source_name);
+  assert.ok(result.publishedAt.includes('2026'));
+  assert.equal(result.sourceUrl, card.source_url);
+  assert.equal(result.summary, card.description);
+  assert.equal(result.imageUrl, card.thumbnail_url);
+  assert.deepEqual(result.keywords, card.keywords);
+  assert.deepEqual(result.categories, card.categories);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].includes('/related?'));
+});
+
+test('search uses article tags and new related response can clear stale metadata', async () => {
+  const card = fullCard();
+  globalThis.fetch = async (url) => String(url).includes('/keywords/')
+    ? ok({ keywords: [] }) : ok({ news_cards: [card], total_count: 1 });
+  await adapter.fetchAndCacheNewsCluster('검색어');
+  assert.deepEqual(adapter.findKnownNews(card.news_id).keywords, ['HBM', 'AI']);
+  assert.deepEqual(adapter.findKnownNews(card.news_id).categories, ['반도체']);
+  cluster();
+  globalThis.fetch = async () => ok({ related_news: [{ ...card,
+    description: '수정된 기사 설명', source_url: 'https://publisher.test/revised',
+    keywords: [], categories: [] }] });
+  await adapter.fetchAndCacheNewsMap('center', 'test');
+  const result = adapter.findKnownNews(card.news_id);
+  assert.equal(result.summary, '수정된 기사 설명');
+  assert.equal(result.sourceUrl, 'https://publisher.test/revised');
+  assert.deepEqual(result.keywords, []);
+  assert.deepEqual(result.categories, []);
+});
+
+test('older related response preserves cached detail metadata', async () => {
+  cluster();
+  const card = fullCard();
+  globalThis.fetch = async () => ok({ related_news: [card] });
+  await adapter.fetchAndCacheNewsMap('center', 'test');
+  const original = adapter.findKnownNews(card.news_id);
+  globalThis.fetch = async () => ok({ related_news: [{ ...item(card.news_id), summary: 'Legacy description' }] });
+  await adapter.fetchAndCacheNewsMap('center', 'test');
+  const result = adapter.findKnownNews(card.news_id);
+  for (const key of ['source', 'publishedAt', 'sourceUrl', 'imageUrl', 'keywords', 'categories']) {
+    assert.deepEqual(result[key], original[key]);
+  }
+  assert.equal(result.summary, 'Legacy description');
+});
+
+test('source adapter fills description and metadata without borrowing a sample article', async () => {
+  const card = fullCard('source-only');
+  globalThis.fetch = async () => ok({ ...card, original_title: card.title, original_body: '' });
+  const result = await adapter.fetchAndCacheNewsSource(card.news_id);
+  assert.equal(result.id, card.news_id);
+  assert.equal(result.title, card.title);
+  assert.equal(result.summary, card.description);
+  assert.equal(result.sourceUrl, card.source_url);
+  assert.deepEqual(result.keywords, card.keywords);
+  assert.deepEqual(result.categories, card.categories);
+  assert.deepEqual(result.relatedStockSymbols, []);
+});
+
+test('empty description keeps the server compatibility summary', async () => {
+  cluster();
+  const card = { ...fullCard(), description: '', summary: '저장된 설명' };
+  globalThis.fetch = async () => ok({ related_news: [card] });
+  await adapter.fetchAndCacheNewsMap('center', 'test');
+  assert.equal(adapter.findKnownNews(card.news_id).summary, card.summary);
+});

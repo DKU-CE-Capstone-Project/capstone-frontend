@@ -632,7 +632,13 @@ function DetailView({
             </motion.div>
           ) : null}
 
-          <motion.div className="tag-list" variants={riseVariants}>
+          {!!detailNews.categories?.length && (
+            <motion.div className="tag-list" aria-label="기사 카테고리" variants={riseVariants}>
+              {detailNews.categories.map((category) => <span key={category}>{category}</span>)}
+            </motion.div>
+          )}
+
+          <motion.div className="tag-list" aria-label="기사 키워드" variants={riseVariants}>
             {detailNews.keywords.map((kw) => (
               <span key={kw}>{kw}</span>
             ))}
