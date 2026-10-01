@@ -20,13 +20,13 @@ const adapter = await import(pathToFileURL(bundle).href);
 // external and the view bundle lives under node_modules where it resolves.
 const viewDir = await mkdtemp(join(process.cwd(), 'node_modules', '.econmind-news-map-view-'));
 await build({
-  entryPoints: ['src/components/NewsMapStatus.tsx', 'src/components/SameStoryPanel.tsx', 'src/layout/mapLayout.ts'],
+  entryPoints: ['src/components/NewsMapStatus.tsx', 'src/components/NewsMapCanvas.tsx', 'src/layout/mapLayout.ts'],
   bundle: true,
   format: 'esm', platform: 'node', outdir: viewDir, outbase: 'src',
-  external: ['react', 'react/jsx-runtime', 'react-dom'],
+  external: ['react', 'react/jsx-runtime', 'react-dom', 'lucide-react', 'motion/react'],
 });
 const { NewsMapStatus } = await import(pathToFileURL(join(viewDir, 'components/NewsMapStatus.js')).href);
-const { SameStoryPanel } = await import(pathToFileURL(join(viewDir, 'components/SameStoryPanel.js')).href);
+const { NewsMapCanvas } = await import(pathToFileURL(join(viewDir, 'components/NewsMapCanvas.js')).href);
 const layout = await import(pathToFileURL(join(viewDir, 'layout/mapLayout.js')).href);
 const originalFetch = globalThis.fetch;
 after(async () => {
@@ -225,11 +225,11 @@ test('map status retains explicit error and omits shortage notice for a full map
   assert.equal(renderToStaticMarkup(createElement(NewsMapStatus, { count: 3, pending: false, error: null })), '');
 });
 
-// ── 같은 소식 묶음·확장 상태 (2026-10-01 반복 보도 그룹) ───────────────────
+// ── 대표 기사와 구버전 응답 호환·확장 상태 ─────────────────────────────
 
 const selection = (status, returned, requested = 3) => ({ status, reason: null, requested, returned });
 
-test('grouped reports are cached with details but never become neighbour nodes', async () => {
+test('legacy grouping fields are ignored while normal article details stay cached', async () => {
   cluster();
   const calls = [];
   globalThis.fetch = async (url) => {
@@ -243,16 +243,15 @@ test('grouped reports are cached with details but never become neighbour nodes',
   };
   const result = await adapter.fetchAndCacheNewsMap('center', 'test');
   assert.deepEqual(result.relatedNewsIds, ['angle']);
-  assert.deepEqual(result.sameStory, { angle: ['angle-copy'], center: ['center-copy-1', 'center-copy-2'] });
-  assert.deepEqual(result.sameStoryTotals, { angle: 1, center: 5 });
+  assert.equal(result.sameStory, undefined);
+  assert.equal(result.sameStoryTotals, undefined);
   assert.equal(result.mapSelection.status, 'insufficient');
-  for (const id of ['angle-copy', 'center-copy-1']) {
-    const cached = adapter.findKnownNews(id);
-    assert.equal(cached.title, 'HBM 생산 확대');
-    assert.equal(cached.source, 'publisher.test');
-    assert.ok(cached.sourceUrl.endsWith(id) && cached.publishedAt.includes('2026'));
-    assert.equal(cached.imageUrl, 'https://publisher.test/news.jpg');
-  }
+  for (const id of ['angle-copy', 'center-copy-1']) assert.equal(adapter.findKnownNews(id), undefined);
+  const cached = adapter.findKnownNews('angle');
+  assert.equal(cached.title, 'HBM 생산 확대');
+  assert.equal(cached.source, 'publisher.test');
+  assert.ok(cached.sourceUrl.endsWith('angle') && cached.publishedAt.includes('2026'));
+  assert.equal(cached.imageUrl, 'https://publisher.test/news.jpg');
   assert.equal(calls.length, 1);
   assert.ok(calls[0].includes('expand=true'));
 });
@@ -281,7 +280,7 @@ test('a different center clears the previous map, and a late expansion cannot ov
     ? new Promise((resolve) => { finishOld = resolve; })
     : ok({ related_news: [fullCard('new-neighbour')], selection: selection('insufficient', 1) });
   adapter.dynClusters.set('test', { ...adapter.resolveCluster('test'), mainNewsId: 'old-center',
-    relatedNewsIds: ['old-first'], sameStory: { 'old-center': ['old-copy'] } });
+    relatedNewsIds: ['old-first'] });
   const late = adapter.fetchAndCacheNewsMap('old-center', 'test', 6, { expand: true, keep: true });
   await adapter.fetchAndCacheNewsMap('new-center', 'test');
   finishOld(ok({ related_news: [fullCard('old-second')], selection: selection('complete', 3) }));
@@ -289,7 +288,7 @@ test('a different center clears the previous map, and a late expansion cannot ov
   const current = adapter.resolveCluster('test');
   assert.equal(current.mainNewsId, 'new-center');
   assert.deepEqual(current.relatedNewsIds, ['new-neighbour']);
-  assert.deepEqual(current.sameStory, {});
+  assert.equal(current.sameStory, undefined);
 });
 
 test('failed expansion keeps the valid first result but marks the map partial', async () => {
@@ -313,23 +312,22 @@ test('status separates loading, finding more, error, partial, shortage and compl
   const partial = render({ selection: { ...selection('partial', 1), reason: 'timeout' } });
   assert.ok(partial.includes('is-warning') && partial.includes('확인된 1개'));
   const shortage = render({ selection: selection('insufficient', 1), grouped: 4 });
-  assert.ok(shortage.includes('연관 기사 1개') && shortage.includes('같은 소식의 다른 보도 4건'));
+  assert.ok(shortage.includes('연관 기사 1개') && !shortage.includes('같은 소식'));
   assert.equal(render({ count: 3, selection: selection('complete', 3) }), '');
   assert.ok(render({ count: 3, selection: selection('insufficient', 3, 10) }).includes('연관 기사 3개'));
 });
 
-test('same-story panel lists title, source and time and reports capped totals', () => {
-  const news = (id) => ({ id, title: `${id} 제목`, source: '출처', publishedAt: '2026-10-01 09:00', summary: '',
+test('map renders normal nodes and detail actions without legacy grouping badges', () => {
+  const news = (id) => ({ id, title: `${id} 제목`, source: '출처', publishedAt: '2026-10-02 09:00', summary: '',
     mockOriginalBody: '', thumbnailTone: 'oil', imageUrl: '', keywords: [], relatedStockSymbols: [], sentiment: 'neutral' });
-  const markup = renderToStaticMarkup(createElement(SameStoryPanel, {
-    groups: [{ ownerId: 'center', ownerTitle: '중심 제목', isCenter: true, members: [news('a'), news('b')], total: 4 }],
-    openId: 'center', onToggle: () => undefined, onOpenDetail: () => undefined,
+  const markup = renderToStaticMarkup(createElement(NewsMapCanvas, {
+    centerNews: news('center'), relatedNews: [news('a'), news('b')],
+    // Older callers/cached data may contain these fields. The canvas ignores them.
+    storyCounts: { center: 5, a: 2 }, onOpenStory: () => undefined,
+    onOpenDetail: () => undefined, onFocusNews: () => undefined,
   }));
-  for (const text of ['같은 소식 다른 보도', '중심 기사', '다른 보도 4건', 'a 제목', '출처 · 2026-10-01 09:00', '외 2건']) {
+  for (const text of ['center 제목', 'a 제목', 'b 제목', '출처', '상세 보기', '맵 중심으로 이동']) {
     assert.ok(markup.includes(text), text);
   }
-  assert.ok(markup.includes('<details') && markup.includes(' open=""'));
-  assert.ok(!markup.includes('relevance') && !markup.includes('점수'));
-  assert.equal(renderToStaticMarkup(createElement(SameStoryPanel, { groups: [], openId: null,
-    onToggle: () => undefined, onOpenDetail: () => undefined })), '');
+  assert.ok(!markup.includes('같은 소식') && !markup.includes('node-story-chip') && !markup.includes('story-panel'));
 });

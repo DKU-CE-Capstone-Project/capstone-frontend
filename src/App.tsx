@@ -40,7 +40,6 @@ import {
 import { KeywordMap } from './components/KeywordMap';
 import { NewsMapCanvas } from './components/NewsMapCanvas';
 import { NewsMapStatus } from './components/NewsMapStatus';
-import { SameStoryPanel, type SameStoryGroup } from './components/SameStoryPanel';
 import { EmptyState, LoadingOverlay, MapSkeleton, SmartImage, ThemeToggle, Toast } from './components/ui';
 
 type Screen = 'home' | 'searchResults' | 'newsMap' | 'newsDetail' | 'report';
@@ -68,7 +67,6 @@ function App() {
   const [isExpandingMap, setIsExpandingMap] = useState(false);
   /** 최초 주변 기사를 표시한 뒤 서버가 추가 후보를 찾는 중 */
   const [isFindingMore, setIsFindingMore] = useState(false);
-  const [openStoryId, setOpenStoryId] = useState<string | null>(null);
   const newsMapRequest = useRef(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [newsMapError, setNewsMapError] = useState<string | null>(null);
@@ -89,16 +87,6 @@ function App() {
   );
   const centerNews = resolveNews(centerNewsId);
   const report = resolveReport(activeCluster.reportId);
-  const storyGroups = useMemo(
-    () => getStoryGroups(activeCluster, centerNewsId),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeCluster, centerNewsId, activeClusterId, clusterRevision],
-  );
-  const storyCounts = useMemo(
-    () => Object.fromEntries(storyGroups.map((group) => [group.ownerId, group.total])),
-    [storyGroups],
-  );
-
   useEffect(() => {
     let isMounted = true;
     fetchRecommendedKeywordLabels(8)
@@ -143,7 +131,6 @@ function App() {
     setNewsMapError(null);
     setIsExpandingMap(false);
     setIsFindingMore(false);
-    setOpenStoryId(null);
     const trimmed = term.trim();
     setLoadingLabel('연관 키워드를 찾는 중…');
     setErrorMsg(null);
@@ -173,7 +160,6 @@ function App() {
     setNewsMapError(null);
     setIsExpandingMap(false);
     setIsFindingMore(false);
-    setOpenStoryId(null);
     setLoadingLabel('관련 뉴스를 모으는 중…');
     setErrorMsg(null);
     try {
@@ -268,7 +254,6 @@ function App() {
     setErrorMsg(null);
     setNewsMapError(null);
     setIsFindingMore(false);
-    setOpenStoryId(null);
     setCenterNewsId(newsId);
     setIsExpandingMap(true);
     try {
@@ -337,10 +322,6 @@ function App() {
                 findingMore={isFindingMore}
                 selection={activeCluster.mainNewsId === centerNewsId ? activeCluster.mapSelection : undefined}
                 error={newsMapError}
-                storyGroups={storyGroups}
-                storyCounts={storyCounts}
-                openStoryId={openStoryId}
-                onToggleStory={(id, open) => setOpenStoryId(open ? id : (current) => (current === id ? null : current))}
                 onOpenDetail={openDetail}
                 onFocusNews={focusNews}
               />
@@ -353,7 +334,6 @@ function App() {
                 centerNews={centerNews}
                 detailNews={resolveNews(detailNewsId)}
                 relatedNews={visibleNews}
-                storyGroup={storyGroups.find((group) => group.ownerId === detailNewsId)}
                 errorMsg={errorMsg}
                 onOpenDetail={openDetail}
                 onFocusNews={focusNews}
@@ -572,10 +552,6 @@ function NewsMapView({
   findingMore,
   selection,
   error,
-  storyGroups,
-  storyCounts,
-  openStoryId,
-  onToggleStory,
   onOpenDetail,
   onFocusNews,
 }: {
@@ -586,14 +562,9 @@ function NewsMapView({
   findingMore: boolean;
   selection: IssueCluster['mapSelection'];
   error: string | null;
-  storyGroups: SameStoryGroup[];
-  storyCounts: Record<string, number>;
-  openStoryId: string | null;
-  onToggleStory: (ownerId: string, open: boolean) => void;
   onOpenDetail: (newsId: string) => void;
   onFocusNews: (newsId: string) => void;
 }) {
-  const grouped = storyGroups.reduce((sum, group) => sum + group.total, 0);
   return (
     <>
       {busy ? (
@@ -604,13 +575,8 @@ function NewsMapView({
         <NewsMapCanvas
           centerNews={centerNews}
           relatedNews={relatedNews}
-          storyCounts={expanding ? undefined : storyCounts}
           onOpenDetail={onOpenDetail}
           onFocusNews={onFocusNews}
-          onOpenStory={(id) => {
-            onToggleStory(id, true);
-            document.getElementById(`story-${id}`)?.scrollIntoView({ block: 'nearest' });
-          }}
         />
       )}
 
@@ -636,19 +602,8 @@ function NewsMapView({
         error={error}
         findingMore={findingMore}
         selection={selection}
-        grouped={grouped}
       />
-      <aside className="map-side-rail">
-        <PremiumPreview />
-        {!busy && !expanding && (
-          <SameStoryPanel
-            groups={storyGroups}
-            openId={openStoryId}
-            onToggle={onToggleStory}
-            onOpenDetail={onOpenDetail}
-          />
-        )}
-      </aside>
+      <PremiumPreview />
     </>
   );
 }
@@ -658,7 +613,6 @@ function DetailView({
   centerNews,
   detailNews,
   relatedNews,
-  storyGroup,
   errorMsg,
   onOpenDetail,
   onFocusNews,
@@ -667,8 +621,6 @@ function DetailView({
   centerNews: NewsCard;
   detailNews: NewsCard;
   relatedNews: NewsCard[];
-  /** 상세 기사가 대표인 같은 소식 묶음(있을 때만) */
-  storyGroup?: SameStoryGroup;
   errorMsg: string | null;
   onOpenDetail: (newsId: string) => void;
   onFocusNews: (newsId: string) => void;
@@ -747,17 +699,6 @@ function DetailView({
             ))}
           </motion.div>
 
-          {storyGroup && (
-            <motion.div variants={riseVariants}>
-              <SameStoryPanel
-                className="is-inline"
-                groups={[storyGroup]}
-                openId={storyGroup.ownerId}
-                onToggle={() => undefined}
-                onOpenDetail={onOpenDetail}
-              />
-            </motion.div>
-          )}
 
           <motion.button
             type="button"
@@ -1030,28 +971,6 @@ function getSearchKeywordNodes(cluster: IssueCluster): string[] {
  * 부족하면 부족한 대로 그리는 편이 맞다. resolveNews 는 모르는 id 에
  * staticNewsCards[0] 을 돌려주므로 여기서는 findKnownNews 를 쓴다.
  */
-/**
- * 같은 소식 묶음. 중심 기사 → 주변 기사의 표시 순서이며 캐시에 있는 기사만 담는다.
- * 묶인 기사는 주변 노드 수에 포함하지 않는다.
- */
-function getStoryGroups(cluster: IssueCluster, centerNewsId: string): SameStoryGroup[] {
-  if (cluster.mainNewsId !== centerNewsId) return [];
-  const owners = [centerNewsId, ...cluster.relatedNewsIds.slice(0, MAX_RELATED_NODES)];
-  return owners.flatMap((ownerId) => {
-    const owner = findKnownNews(ownerId);
-    const members = (cluster.sameStory?.[ownerId] ?? [])
-      .map(findKnownNews)
-      .filter((news): news is NewsCard => news !== undefined);
-    if (!owner || members.length === 0) return [];
-    return [{
-      ownerId,
-      ownerTitle: owner.title,
-      isCenter: ownerId === centerNewsId,
-      members,
-      total: Math.max(cluster.sameStoryTotals?.[ownerId] ?? members.length, members.length),
-    }];
-  });
-}
 
 function getVisibleNews(cluster: IssueCluster, centerNewsId: string): NewsCard[] {
   if (cluster.mainNewsId !== centerNewsId) return [];

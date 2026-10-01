@@ -85,14 +85,10 @@ type ApiSourceResponse = {
 type ApiRelatedNewsItem = ApiNewsCard & {
   relevance_score?: number | null;
   distance: number;
-  same_story?: ApiNewsCard[];
-  same_story_total?: number;
 };
 
 type ApiRelatedResponse = {
   related_news: ApiRelatedNewsItem[];
-  center_same_story?: ApiNewsCard[];
-  center_same_story_total?: number;
   selection?: NewsMapSelection | null;
 };
 
@@ -290,8 +286,7 @@ export async function fetchAndCacheNewsMap(
   newsMapRequests.set(currentClusterId, request);
   if (!keep || currentCluster.mainNewsId !== newsId) {
     dynClusters.set(currentClusterId, {
-      ...currentCluster, mainNewsId: newsId, relatedNewsIds: [],
-      sameStory: {}, sameStoryTotals: {}, mapSelection: undefined,
+      ...currentCluster, mainNewsId: newsId, relatedNewsIds: [], mapSelection: undefined,
     });
   }
   const params = new URLSearchParams({ limit: String(limit), tier: 'FREE', expand: String(expand) });
@@ -301,37 +296,19 @@ export async function fetchAndCacheNewsMap(
   if (newsMapRequests.get(currentClusterId) !== request) return resolveCluster(currentClusterId);
 
   const relatedIds: string[] = [];
-  const sameStory: Record<string, string[]> = {};
-  const sameStoryTotals: Record<string, number> = {};
-  const cacheStory = (ownerId: string, cards: ApiNewsCard[] | undefined, total: number | undefined) => {
-    const ids = (cards ?? []).map((card, index) => {
-      const news = apiCardToNewsCard(card, currentCluster.query, index + 1);
-      dynNews.set(news.id, news);
-      return news.id;
-    });
-    if (ids.length > 0) {
-      sameStory[ownerId] = ids;
-      sameStoryTotals[ownerId] = Math.max(total ?? ids.length, ids.length);
-    }
-  };
-
   relatedData.related_news
     .slice(0, limit)
     .forEach((item, index) => {
       const card = apiCardToNewsCard(item, currentCluster.query, index + 1);
       dynNews.set(card.id, card);
       relatedIds.push(card.id);
-      cacheStory(card.id, item.same_story, item.same_story_total);
     });
-  cacheStory(newsId, relatedData.center_same_story, relatedData.center_same_story_total);
 
   const nextCluster: IssueCluster = {
     ...resolveCluster(currentClusterId),
     id: currentClusterId,
     mainNewsId: newsId,
     relatedNewsIds: relatedIds,
-    sameStory,
-    sameStoryTotals,
     mapSelection: relatedData.selection ?? undefined,
   };
   dynClusters.set(currentClusterId, nextCluster);

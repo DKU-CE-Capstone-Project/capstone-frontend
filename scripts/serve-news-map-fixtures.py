@@ -1,7 +1,7 @@
 """Local UI-only fixtures for news-map states. No outbound requests.
 
 Run this server on 127.0.0.1:9031, then start Vite with that VITE_API_BASE.
-Select '검증0', '검증1', '검증2', '검증오류', '검증묶음', '검증확장' or '검증부분'.
+Select '검증0', '검증1', '검증2', '검증오류', '검증대표', '검증확장' or '검증부분'.
 These are fictional news. '검증확장' answers expand=true after 2 seconds;
 '검증부분' fails that expansion request so the first valid result stays partial.
 """
@@ -18,10 +18,8 @@ def card(nid, title, source="로컬 검증 매체"):
             "keywords": ["검증 키워드"], "categories": ["반도체"], "related_stock_names": []}
 
 
-def node(nid, title, story=()):
-    return {**card(nid, title), "distance": 1, "relevance_score": None,
-            "same_story": [card(f"{nid}-copy-{i}", f"{title} (다른 매체 {i})", f"다른 매체 {i}") for i in story],
-            "same_story_total": len(story)}
+def node(nid, title):
+    return {**card(nid, title), "distance": 1, "relevance_score": None}
 
 
 def selection(status, returned, reason=None):
@@ -33,14 +31,11 @@ def related(case, expand):
         count = int(case)
         return {"related_news": [node(f"extra-{i}", f"검색 캐시에 없던 연관 기사 {i}") for i in range(count)],
                 "selection": selection("insufficient" if count < 3 else "complete", count)}
-    if case == "group":
-        return {"related_news": [node("angle", "후속 분석 기사", story=(1, 2)), node("impact", "영향 분석 기사"),
-                                 node("compare", "비교 기사")],
-                "center_same_story": [card(f"center-copy-{i}", f"중심과 같은 소식 {i}", f"다른 매체 {i}") for i in (1, 2, 3)],
-                "center_same_story_total": 3, "selection": selection("complete", 3)}
+    if case == "representative":
+        return {"related_news": [node("angle", "후속 분석 기사"), node("impact", "영향 분석 기사"),
+                                 node("compare", "비교 기사")], "selection": selection("complete", 3)}
     first = {"related_news": [node("first", "최초 후보의 연관 기사")],
-             "center_same_story": [card("center-copy-1", "중심과 같은 소식 1", "다른 매체 1")],
-             "center_same_story_total": 1, "selection": selection("expandable", 1)}
+             "selection": selection("expandable", 1)}
     if not expand:
         return first
     time.sleep(2)
@@ -51,7 +46,7 @@ def related(case, expand):
             "selection": selection("complete", 3)}
 
 
-CASES = {"오류": "error", "묶음": "group", "확장": "expand", "부분": "partial"}
+CASES = {"오류": "error", "대표": "representative", "확장": "expand", "부분": "partial"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -70,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/image.svg":
             return self.send(200, b'<svg xmlns="http://www.w3.org/2000/svg" width="520" height="520"><rect width="520" height="520" fill="#264970"/></svg>', "image/svg+xml")
         if parsed.path.endswith("/keywords/recommended"):
-            names = ("0", "1", "2", "오류", "묶음", "확장", "부분")
+            names = ("0", "1", "2", "오류", "대표", "확장", "부분")
             return self.send(200, {"keywords": [{"keyword": f"검증{name}", "category": "반도체", "rank": n}
                                                for n, name in enumerate(names, 1)]})
         if parsed.path.endswith("/news/search"):
