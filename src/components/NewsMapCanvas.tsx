@@ -122,66 +122,74 @@ export function NewsMapCanvas({
                   className="news-node-float"
                   animate={motionSafe && !isCenter ? floatAnimation(i, 5) : undefined}
                 >
-                  <motion.button
-                    type="button"
-                    className={`news-node tone-${news.thumbnailTone}${isCenter ? ' is-center' : ''}${canFocus ? ' is-focusable' : ''}`}
+                  {/* 원과 상세 버튼을 같은 hover 영역에 두어 버튼으로 이동해도 확대 상태를 유지한다. */}
+                  <motion.div
+                    className="news-node-interaction"
                     whileHover={{ scale: 1.05, y: -4 }}
-                    whileTap={{ scale: 0.98 }}
                     transition={springSnappy}
                     onHoverStart={() => setHovered(node.id)}
                     onHoverEnd={() => setHovered(null)}
                     onFocus={() => setHovered(node.id)}
-                    onBlur={() => setHovered(null)}
-                    onClick={() => {
-                      setHovered(null);
-                      if (canFocus) onFocusNews(node.id);
-                      else onOpenDetail(node.id);
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setHovered(null);
                     }}
-                    aria-label={
-                      canFocus
-                        ? `${news.title} — 맵 중심으로 이동`
-                        : `${news.title} — 뉴스 상세 보기`
-                    }
                   >
-                    <SmartImage
-                      className="node-image"
-                      src={news.imageUrl}
-                      alt=""
-                      eager={isCenter}
-                    />
-                    <span className="node-copy">
-                      <strong style={{ fontSize: node.titleFont }}>{news.title}</strong>
-                      {news.source && (
-                        <small style={{ fontSize: node.metaFont }}>{news.source}</small>
-                      )}
-                      {canFocus && (
-                        <span
-                          className="node-focus-hint"
-                          style={{ fontSize: node.metaFont }}
-                          aria-hidden="true"
-                        >
-                          <Crosshair size={12} />
-                          중심으로
-                        </span>
-                      )}
-                    </span>
-                  </motion.button>
+                    <motion.button
+                      type="button"
+                      className={`news-node tone-${news.thumbnailTone}${isCenter ? ' is-center' : ''}${canFocus ? ' is-focusable' : ''}`}
+                      whileTap={{ scale: 0.98 }}
+                      transition={springSnappy}
+                      onClick={() => {
+                        setHovered(null);
+                        if (canFocus) onFocusNews(node.id);
+                        else onOpenDetail(node.id);
+                      }}
+                      aria-label={
+                        canFocus
+                          ? `${news.title} — 맵 중심으로 이동`
+                          : `${news.title} — 뉴스 상세 보기`
+                      }
+                    >
+                      <SmartImage
+                        className="node-image"
+                        src={news.imageUrl}
+                        alt=""
+                        eager={isCenter}
+                      />
+                      <span className="node-copy">
+                        <strong style={{ fontSize: node.titleFont }}>{news.title}</strong>
+                        {news.source && (
+                          <small style={{ fontSize: node.metaFont }}>{news.source}</small>
+                        )}
+                        {canFocus && (
+                          <span
+                            className="node-focus-hint"
+                            style={{ fontSize: node.metaFont }}
+                            aria-hidden="true"
+                          >
+                            <Crosshair size={12} />
+                            중심으로
+                          </span>
+                        )}
+                      </span>
+                    </motion.button>
 
-
-                  {/* 원 전체와 겹치지 않는 별도 버튼 — 버튼 중첩은 유효하지 않은 마크업이라 형제로 둔다 */}
-                  {showPill && (
-                  <motion.button
-                    type="button"
-                    className="node-detail-pill"
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.94 }}
-                    transition={springSnappy}
-                    onClick={() => onOpenDetail(node.id)}
-                    aria-label={`${news.title} 상세 보기`}
-                  >
-                    상세
-                  </motion.button>
-                  )}
+                    {/* 버튼 중첩을 피하고, 중앙 정렬도 Motion에 맡겨 확대 시 transform이 유지되게 한다. */}
+                    {showPill && (
+                      <motion.button
+                        type="button"
+                        className="node-detail-pill"
+                        style={{ x: '-50%' }}
+                        whileHover={{ scale: 1.08 }}
+                        whileTap={{ scale: 0.94 }}
+                        transition={springSnappy}
+                        onClick={() => onOpenDetail(node.id)}
+                        aria-label={`${news.title} 상세 보기`}
+                      >
+                        상세
+                      </motion.button>
+                    )}
+                  </motion.div>
                 </motion.div>
               </motion.div>
             );
