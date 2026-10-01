@@ -16,18 +16,23 @@ await build({
   platform: 'node', outfile: bundle, define: { 'import.meta.env': '{}' },
 });
 const adapter = await import(pathToFileURL(bundle).href);
+// Components with hooks must share react-dom/server's React instance, so React stays
+// external and the view bundle lives under node_modules where it resolves.
+const viewDir = await mkdtemp(join(process.cwd(), 'node_modules', '.econmind-news-map-view-'));
 await build({
-  entryPoints: ['src/components/NewsMapStatus.tsx', 'src/layout/mapLayout.ts'], bundle: true,
-  format: 'esm', platform: 'node', outdir: join(temporary, 'view'), outbase: 'src',
-  // Resolve React from this project's lockfile rather than the temporary directory.
-  external: [],
+  entryPoints: ['src/components/NewsMapStatus.tsx', 'src/components/SameStoryPanel.tsx', 'src/layout/mapLayout.ts'],
+  bundle: true,
+  format: 'esm', platform: 'node', outdir: viewDir, outbase: 'src',
+  external: ['react', 'react/jsx-runtime', 'react-dom'],
 });
-const { NewsMapStatus } = await import(pathToFileURL(join(temporary, 'view/components/NewsMapStatus.js')).href);
-const layout = await import(pathToFileURL(join(temporary, 'view/layout/mapLayout.js')).href);
+const { NewsMapStatus } = await import(pathToFileURL(join(viewDir, 'components/NewsMapStatus.js')).href);
+const { SameStoryPanel } = await import(pathToFileURL(join(viewDir, 'components/SameStoryPanel.js')).href);
+const layout = await import(pathToFileURL(join(viewDir, 'layout/mapLayout.js')).href);
 const originalFetch = globalThis.fetch;
 after(async () => {
   globalThis.fetch = originalFetch;
   await rm(temporary, { recursive: true, force: true });
+  await rm(viewDir, { recursive: true, force: true });
 });
 beforeEach(() => {
   adapter.dynClusters.clear();
@@ -218,4 +223,113 @@ test('map status retains explicit error and omits shortage notice for a full map
   assert.ok(markup.includes('role="alert"') && markup.includes('추가 검색 실패'));
   assert.ok(!markup.includes('연결할 연관 기사가 없습니다'));
   assert.equal(renderToStaticMarkup(createElement(NewsMapStatus, { count: 3, pending: false, error: null })), '');
+});
+
+// ── 같은 소식 묶음·확장 상태 (2026-10-01 반복 보도 그룹) ───────────────────
+
+const selection = (status, returned, requested = 3) => ({ status, reason: null, requested, returned });
+
+test('grouped reports are cached with details but never become neighbour nodes', async () => {
+  cluster();
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return ok({
+      related_news: [{ ...fullCard('angle'), same_story: [fullCard('angle-copy')], same_story_total: 1 }],
+      center_same_story: [fullCard('center-copy-1'), fullCard('center-copy-2')],
+      center_same_story_total: 5,
+      selection: selection('insufficient', 1),
+    });
+  };
+  const result = await adapter.fetchAndCacheNewsMap('center', 'test');
+  assert.deepEqual(result.relatedNewsIds, ['angle']);
+  assert.deepEqual(result.sameStory, { angle: ['angle-copy'], center: ['center-copy-1', 'center-copy-2'] });
+  assert.deepEqual(result.sameStoryTotals, { angle: 1, center: 5 });
+  assert.equal(result.mapSelection.status, 'insufficient');
+  for (const id of ['angle-copy', 'center-copy-1']) {
+    const cached = adapter.findKnownNews(id);
+    assert.equal(cached.title, 'HBM 생산 확대');
+    assert.equal(cached.source, 'publisher.test');
+    assert.ok(cached.sourceUrl.endsWith(id) && cached.publishedAt.includes('2026'));
+    assert.equal(cached.imageUrl, 'https://publisher.test/news.jpg');
+  }
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].includes('expand=true'));
+});
+
+test('initial request is expandable, expansion keeps visible nodes and appends', async () => {
+  cluster();
+  let finish;
+  globalThis.fetch = async (url) => String(url).includes('expand=false')
+    ? ok({ related_news: [fullCard('first')], selection: selection('expandable', 1) })
+    : new Promise((resolve) => { finish = resolve; });
+  const first = await adapter.fetchAndCacheNewsMap('center', 'test', 6, { expand: false });
+  assert.equal(first.mapSelection.status, 'expandable');
+  const expanding = adapter.fetchAndCacheNewsMap('center', 'test', 6, { expand: true, keep: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(adapter.resolveCluster('test').relatedNewsIds, ['first']); // Not cleared while waiting.
+  finish(ok({ related_news: [fullCard('first'), fullCard('second')], selection: selection('complete', 2, 2) }));
+  const full = await expanding;
+  assert.deepEqual(full.relatedNewsIds, ['first', 'second']);
+  assert.equal(full.mapSelection.status, 'complete');
+});
+
+test('a different center clears the previous map, and a late expansion cannot overwrite it', async () => {
+  cluster();
+  let finishOld;
+  globalThis.fetch = async (url) => String(url).includes('/old-center/')
+    ? new Promise((resolve) => { finishOld = resolve; })
+    : ok({ related_news: [fullCard('new-neighbour')], selection: selection('insufficient', 1) });
+  adapter.dynClusters.set('test', { ...adapter.resolveCluster('test'), mainNewsId: 'old-center',
+    relatedNewsIds: ['old-first'], sameStory: { 'old-center': ['old-copy'] } });
+  const late = adapter.fetchAndCacheNewsMap('old-center', 'test', 6, { expand: true, keep: true });
+  await adapter.fetchAndCacheNewsMap('new-center', 'test');
+  finishOld(ok({ related_news: [fullCard('old-second')], selection: selection('complete', 3) }));
+  await late;
+  const current = adapter.resolveCluster('test');
+  assert.equal(current.mainNewsId, 'new-center');
+  assert.deepEqual(current.relatedNewsIds, ['new-neighbour']);
+  assert.deepEqual(current.sameStory, {});
+});
+
+test('failed expansion keeps the valid first result but marks the map partial', async () => {
+  cluster();
+  globalThis.fetch = async () => ok({ related_news: [fullCard('first')], selection: selection('expandable', 1) });
+  await adapter.fetchAndCacheNewsMap('center', 'test', 6, { expand: false });
+  const partial = adapter.markNewsMapPartial('center', 'test', 'request_failed');
+  assert.deepEqual(partial.relatedNewsIds, ['first']);
+  assert.equal(partial.mapSelection.status, 'partial');
+  // A stale failure for another center changes nothing.
+  assert.equal(adapter.markNewsMapPartial('other', 'test', 'request_failed').mapSelection.status, 'partial');
+  adapter.dynClusters.set('test', { ...partial, mapSelection: selection('complete', 3) });
+  assert.equal(adapter.markNewsMapPartial('center', 'test', 'x').mapSelection.status, 'complete');
+});
+
+test('status separates loading, finding more, error, partial, shortage and complete', () => {
+  const render = (props) => renderToStaticMarkup(createElement(NewsMapStatus, { count: 1, pending: false, error: null, ...props }));
+  assert.equal(render({ pending: true, findingMore: true }), '');
+  assert.ok(render({ findingMore: true }).includes('추가 관련 기사를 찾는 중'));
+  assert.ok(render({ error: '연관 기사를 불러오지 못했습니다.' }).includes('role="alert"'));
+  const partial = render({ selection: { ...selection('partial', 1), reason: 'timeout' } });
+  assert.ok(partial.includes('is-warning') && partial.includes('확인된 1개'));
+  const shortage = render({ selection: selection('insufficient', 1), grouped: 4 });
+  assert.ok(shortage.includes('연관 기사 1개') && shortage.includes('같은 소식의 다른 보도 4건'));
+  assert.equal(render({ count: 3, selection: selection('complete', 3) }), '');
+  assert.ok(render({ count: 3, selection: selection('insufficient', 3, 10) }).includes('연관 기사 3개'));
+});
+
+test('same-story panel lists title, source and time and reports capped totals', () => {
+  const news = (id) => ({ id, title: `${id} 제목`, source: '출처', publishedAt: '2026-10-01 09:00', summary: '',
+    mockOriginalBody: '', thumbnailTone: 'oil', imageUrl: '', keywords: [], relatedStockSymbols: [], sentiment: 'neutral' });
+  const markup = renderToStaticMarkup(createElement(SameStoryPanel, {
+    groups: [{ ownerId: 'center', ownerTitle: '중심 제목', isCenter: true, members: [news('a'), news('b')], total: 4 }],
+    openId: 'center', onToggle: () => undefined, onOpenDetail: () => undefined,
+  }));
+  for (const text of ['같은 소식 다른 보도', '중심 기사', '다른 보도 4건', 'a 제목', '출처 · 2026-10-01 09:00', '외 2건']) {
+    assert.ok(markup.includes(text), text);
+  }
+  assert.ok(markup.includes('<details') && markup.includes(' open=""'));
+  assert.ok(!markup.includes('relevance') && !markup.includes('점수'));
+  assert.equal(renderToStaticMarkup(createElement(SameStoryPanel, { groups: [], openId: null,
+    onToggle: () => undefined, onOpenDetail: () => undefined })), '');
 });

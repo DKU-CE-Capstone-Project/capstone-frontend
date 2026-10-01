@@ -20,14 +20,19 @@ export function NewsMapCanvas({
   centerNews,
   relatedNews,
   compact = false,
+  storyCounts,
   onOpenDetail,
   onFocusNews,
+  onOpenStory,
 }: {
   centerNews: NewsCard;
   relatedNews: NewsCard[];
   compact?: boolean;
+  /** 노드 ID → 같은 소식으로 묶인 다른 보도 건수. 노드 수에는 포함하지 않는다. */
+  storyCounts?: Record<string, number>;
   onOpenDetail: (newsId: string) => void;
   onFocusNews?: (newsId: string) => void;
+  onOpenStory?: (newsId: string) => void;
 }) {
   const { ref, size } = useFieldSize();
   const motionSafe = useMotionSafe();
@@ -96,6 +101,7 @@ export function NewsMapCanvas({
             // 예전처럼 노드를 누르면 상세로 간다.
             const showPill = !compact && node.size >= 160;
             const canFocus = !isCenter && showPill && !!onFocusNews;
+            const storyCount = compact ? 0 : storyCounts?.[node.id] ?? 0;
 
             return (
               <motion.div
@@ -166,6 +172,17 @@ export function NewsMapCanvas({
                       )}
                     </span>
                   </motion.button>
+
+                  {storyCount > 0 && onOpenStory && (
+                    <button
+                      type="button"
+                      className="node-story-chip"
+                      onClick={() => onOpenStory(node.id)}
+                      aria-label={`${news.title} — 같은 소식 다른 보도 ${storyCount}건 보기`}
+                    >
+                      같은 소식 {storyCount}
+                    </button>
+                  )}
 
                   {/* 원 전체와 겹치지 않는 별도 버튼 — 버튼 중첩은 유효하지 않은 마크업이라 형제로 둔다 */}
                   {showPill && (

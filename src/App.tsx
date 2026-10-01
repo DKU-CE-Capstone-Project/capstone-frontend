@@ -20,6 +20,7 @@ import {
   fetchRecommendedKeywordLabels,
   findKnownNews,
   findOrResolveClusterByQuery,
+  markNewsMapPartial,
   resolveCluster,
   resolveNews,
   resolveReport,
@@ -39,6 +40,7 @@ import {
 import { KeywordMap } from './components/KeywordMap';
 import { NewsMapCanvas } from './components/NewsMapCanvas';
 import { NewsMapStatus } from './components/NewsMapStatus';
+import { SameStoryPanel, type SameStoryGroup } from './components/SameStoryPanel';
 import { EmptyState, LoadingOverlay, MapSkeleton, SmartImage, ThemeToggle, Toast } from './components/ui';
 
 type Screen = 'home' | 'searchResults' | 'newsMap' | 'newsDetail' | 'report';
@@ -64,6 +66,9 @@ function App() {
   const [detailNewsId, setDetailNewsId] = useState(clusters[0].mainNewsId);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   const [isExpandingMap, setIsExpandingMap] = useState(false);
+  /** 최초 주변 기사를 표시한 뒤 서버가 추가 후보를 찾는 중 */
+  const [isFindingMore, setIsFindingMore] = useState(false);
+  const [openStoryId, setOpenStoryId] = useState<string | null>(null);
   const newsMapRequest = useRef(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [newsMapError, setNewsMapError] = useState<string | null>(null);
@@ -84,6 +89,15 @@ function App() {
   );
   const centerNews = resolveNews(centerNewsId);
   const report = resolveReport(activeCluster.reportId);
+  const storyGroups = useMemo(
+    () => getStoryGroups(activeCluster, centerNewsId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeCluster, centerNewsId, activeClusterId, clusterRevision],
+  );
+  const storyCounts = useMemo(
+    () => Object.fromEntries(storyGroups.map((group) => [group.ownerId, group.total])),
+    [storyGroups],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -128,6 +142,8 @@ function App() {
     ++newsMapRequest.current;
     setNewsMapError(null);
     setIsExpandingMap(false);
+    setIsFindingMore(false);
+    setOpenStoryId(null);
     const trimmed = term.trim();
     setLoadingLabel('연관 키워드를 찾는 중…');
     setErrorMsg(null);
@@ -156,6 +172,8 @@ function App() {
     const request = ++newsMapRequest.current;
     setNewsMapError(null);
     setIsExpandingMap(false);
+    setIsFindingMore(false);
+    setOpenStoryId(null);
     setLoadingLabel('관련 뉴스를 모으는 중…');
     setErrorMsg(null);
     try {
@@ -169,7 +187,7 @@ function App() {
       // 검색 결과는 "검색어에 걸린 기사"다. 맵에는 "중심 기사와 이어진 기사"를 건다.
       try {
         setLoadingLabel('연관 뉴스를 잇는 중…');
-        if (nextCluster.mainNewsId) await loadNeighbours(nextCluster.mainNewsId, nextCluster.id);
+        if (nextCluster.mainNewsId) await loadNeighbours(nextCluster.mainNewsId, nextCluster.id, request);
       } catch (error) {
         if (request !== newsMapRequest.current) return;
         const message = errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.');
@@ -216,9 +234,26 @@ function App() {
     }
   };
 
-  /** 중심 뉴스의 선정된 이웃을 받아 맵을 다시 구성한다. 실패는 호출부가 처리한다. */
-  const loadNeighbours = (newsId: string, clusterId: string) =>
-    fetchAndCacheNewsMap(newsId, clusterId, MAX_RELATED_NODES);
+  /**
+   * 중심 뉴스의 선정된 이웃을 받아 맵을 다시 구성한다. 최초 후보만 평가한 결과를 먼저
+   * 그리고, 서버가 더 찾을 수 있다고 하면(expandable) 같은 중심으로 확장 요청을 이어서
+   * 보낸다. 최초 요청 실패는 호출부가 처리한다. 다른 중심·검색어로 바뀐 뒤 도착한
+   * 응답은 어댑터와 요청 번호가 모두 버린다.
+   */
+  const loadNeighbours = async (newsId: string, clusterId: string, request: number) => {
+    const first = await fetchAndCacheNewsMap(newsId, clusterId, MAX_RELATED_NODES, { expand: false });
+    if (request !== newsMapRequest.current || first.mapSelection?.status !== 'expandable') return;
+    setIsFindingMore(true);
+    void fetchAndCacheNewsMap(newsId, clusterId, MAX_RELATED_NODES, { expand: true, keep: true })
+      .catch(() => {
+        if (request === newsMapRequest.current) markNewsMapPartial(newsId, clusterId, 'request_failed');
+      })
+      .finally(() => {
+        if (request !== newsMapRequest.current) return;
+        setIsFindingMore(false);
+        setClusterRevision((v) => v + 1);
+      });
+  };
 
   /**
    * 연관 노드를 맵 중심으로 끌어온다.
@@ -232,10 +267,12 @@ function App() {
     const clusterId = activeCluster.id;
     setErrorMsg(null);
     setNewsMapError(null);
+    setIsFindingMore(false);
+    setOpenStoryId(null);
     setCenterNewsId(newsId);
     setIsExpandingMap(true);
     try {
-      await loadNeighbours(newsId, clusterId);
+      await loadNeighbours(newsId, clusterId, request);
     } catch (error) {
       if (request === newsMapRequest.current) {
         const message = errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.');
@@ -297,7 +334,13 @@ function App() {
                 relatedNews={visibleNews}
                 busy={loadingLabel !== null}
                 expanding={isExpandingMap}
+                findingMore={isFindingMore}
+                selection={activeCluster.mainNewsId === centerNewsId ? activeCluster.mapSelection : undefined}
                 error={newsMapError}
+                storyGroups={storyGroups}
+                storyCounts={storyCounts}
+                openStoryId={openStoryId}
+                onToggleStory={(id, open) => setOpenStoryId(open ? id : (current) => (current === id ? null : current))}
                 onOpenDetail={openDetail}
                 onFocusNews={focusNews}
               />
@@ -310,6 +353,7 @@ function App() {
                 centerNews={centerNews}
                 detailNews={resolveNews(detailNewsId)}
                 relatedNews={visibleNews}
+                storyGroup={storyGroups.find((group) => group.ownerId === detailNewsId)}
                 errorMsg={errorMsg}
                 onOpenDetail={openDetail}
                 onFocusNews={focusNews}
@@ -525,7 +569,13 @@ function NewsMapView({
   relatedNews,
   busy,
   expanding,
+  findingMore,
+  selection,
   error,
+  storyGroups,
+  storyCounts,
+  openStoryId,
+  onToggleStory,
   onOpenDetail,
   onFocusNews,
 }: {
@@ -533,10 +583,17 @@ function NewsMapView({
   relatedNews: NewsCard[];
   busy: boolean;
   expanding: boolean;
+  findingMore: boolean;
+  selection: IssueCluster['mapSelection'];
   error: string | null;
+  storyGroups: SameStoryGroup[];
+  storyCounts: Record<string, number>;
+  openStoryId: string | null;
+  onToggleStory: (ownerId: string, open: boolean) => void;
   onOpenDetail: (newsId: string) => void;
   onFocusNews: (newsId: string) => void;
 }) {
+  const grouped = storyGroups.reduce((sum, group) => sum + group.total, 0);
   return (
     <>
       {busy ? (
@@ -547,8 +604,13 @@ function NewsMapView({
         <NewsMapCanvas
           centerNews={centerNews}
           relatedNews={relatedNews}
+          storyCounts={expanding ? undefined : storyCounts}
           onOpenDetail={onOpenDetail}
           onFocusNews={onFocusNews}
+          onOpenStory={(id) => {
+            onToggleStory(id, true);
+            document.getElementById(`story-${id}`)?.scrollIntoView({ block: 'nearest' });
+          }}
         />
       )}
 
@@ -568,8 +630,25 @@ function NewsMapView({
         )}
       </AnimatePresence>
 
-      <NewsMapStatus count={relatedNews.length} pending={busy || expanding} error={error} />
-      <PremiumPreview />
+      <NewsMapStatus
+        count={relatedNews.length}
+        pending={busy || expanding}
+        error={error}
+        findingMore={findingMore}
+        selection={selection}
+        grouped={grouped}
+      />
+      <aside className="map-side-rail">
+        <PremiumPreview />
+        {!busy && !expanding && (
+          <SameStoryPanel
+            groups={storyGroups}
+            openId={openStoryId}
+            onToggle={onToggleStory}
+            onOpenDetail={onOpenDetail}
+          />
+        )}
+      </aside>
     </>
   );
 }
@@ -579,6 +658,7 @@ function DetailView({
   centerNews,
   detailNews,
   relatedNews,
+  storyGroup,
   errorMsg,
   onOpenDetail,
   onFocusNews,
@@ -587,6 +667,8 @@ function DetailView({
   centerNews: NewsCard;
   detailNews: NewsCard;
   relatedNews: NewsCard[];
+  /** 상세 기사가 대표인 같은 소식 묶음(있을 때만) */
+  storyGroup?: SameStoryGroup;
   errorMsg: string | null;
   onOpenDetail: (newsId: string) => void;
   onFocusNews: (newsId: string) => void;
@@ -664,6 +746,18 @@ function DetailView({
               <span key={kw}>{kw}</span>
             ))}
           </motion.div>
+
+          {storyGroup && (
+            <motion.div variants={riseVariants}>
+              <SameStoryPanel
+                className="is-inline"
+                groups={[storyGroup]}
+                openId={storyGroup.ownerId}
+                onToggle={() => undefined}
+                onOpenDetail={onOpenDetail}
+              />
+            </motion.div>
+          )}
 
           <motion.button
             type="button"
@@ -936,6 +1030,29 @@ function getSearchKeywordNodes(cluster: IssueCluster): string[] {
  * 부족하면 부족한 대로 그리는 편이 맞다. resolveNews 는 모르는 id 에
  * staticNewsCards[0] 을 돌려주므로 여기서는 findKnownNews 를 쓴다.
  */
+/**
+ * 같은 소식 묶음. 중심 기사 → 주변 기사의 표시 순서이며 캐시에 있는 기사만 담는다.
+ * 묶인 기사는 주변 노드 수에 포함하지 않는다.
+ */
+function getStoryGroups(cluster: IssueCluster, centerNewsId: string): SameStoryGroup[] {
+  if (cluster.mainNewsId !== centerNewsId) return [];
+  const owners = [centerNewsId, ...cluster.relatedNewsIds.slice(0, MAX_RELATED_NODES)];
+  return owners.flatMap((ownerId) => {
+    const owner = findKnownNews(ownerId);
+    const members = (cluster.sameStory?.[ownerId] ?? [])
+      .map(findKnownNews)
+      .filter((news): news is NewsCard => news !== undefined);
+    if (!owner || members.length === 0) return [];
+    return [{
+      ownerId,
+      ownerTitle: owner.title,
+      isCenter: ownerId === centerNewsId,
+      members,
+      total: Math.max(cluster.sameStoryTotals?.[ownerId] ?? members.length, members.length),
+    }];
+  });
+}
+
 function getVisibleNews(cluster: IssueCluster, centerNewsId: string): NewsCard[] {
   if (cluster.mainNewsId !== centerNewsId) return [];
   return cluster.relatedNewsIds

@@ -16,6 +16,14 @@ export type NewsCard = {
   sentiment: Sentiment;
 };
 
+/** 서버 뉴스맵 선정 상태. 점수나 유료 정보는 담지 않는다. */
+export type NewsMapSelection = {
+  status: 'complete' | 'insufficient' | 'partial' | 'expandable';
+  reason: string | null;
+  requested: number;
+  returned: number;
+};
+
 export type IssueCluster = {
   id: string;
   query: string;
@@ -23,6 +31,11 @@ export type IssueCluster = {
   relatedNewsIds: string[];
   recommendedKeywords: string[];
   reportId: string;
+  /** 표시 노드 ID → 같은 소식을 다룬 다른 보도 ID. 주변 노드 수에 포함하지 않는다. */
+  sameStory?: Record<string, string[]>;
+  /** 표시 노드 ID → 서버가 확인한 같은 소식 전체 건수(응답 목록은 상한이 있을 수 있다). */
+  sameStoryTotals?: Record<string, number>;
+  mapSelection?: NewsMapSelection;
 };
 
 export type Report = {

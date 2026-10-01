@@ -11,6 +11,7 @@ import {
   reports as staticReports,
   type IssueCluster,
   type NewsCard,
+  type NewsMapSelection,
   type Report,
 } from './mockData';
 
@@ -84,10 +85,15 @@ type ApiSourceResponse = {
 type ApiRelatedNewsItem = ApiNewsCard & {
   relevance_score?: number | null;
   distance: number;
+  same_story?: ApiNewsCard[];
+  same_story_total?: number;
 };
 
 type ApiRelatedResponse = {
   related_news: ApiRelatedNewsItem[];
+  center_same_story?: ApiNewsCard[];
+  center_same_story_total?: number;
+  selection?: NewsMapSelection | null;
 };
 
 type ApiReportCreateResponse = {
@@ -261,25 +267,53 @@ export async function fetchAndCacheNewsCluster(term: string): Promise<IssueClust
 /**
  * /related가 선정한 순서와 FREE 상한을 그대로 유지한다.
  * 검색 후보·다른 API로 부족한 수를 보충하지 않는다. 새 중심을 평가하는 동안과
- * 실패 시에는 이전 중심의 연관 목록을 비운다.
+ * 실패 시에는 이전 중심의 연관 목록을 비운다. 같은 중심의 확장 요청(keep)은
+ * 응답이 올 때까지 이미 받은 결과를 유지한다. 늦게 도착한 이전 요청은 버린다.
  */
 const newsMapRequests = new Map<string, number>();
+
+export type NewsMapOptions = {
+  /** false면 서버가 최초 후보만 평가하고, 더 찾을 수 있으면 status=expandable을 준다. */
+  expand?: boolean;
+  /** 같은 중심의 결과를 확장하는 요청이면 기존 결과를 지우지 않는다. */
+  keep?: boolean;
+};
 
 export async function fetchAndCacheNewsMap(
   newsId: string,
   currentClusterId: string,
   limit = 6,
+  { expand = true, keep = false }: NewsMapOptions = {},
 ): Promise<IssueCluster> {
   const currentCluster = resolveCluster(currentClusterId);
   const request = (newsMapRequests.get(currentClusterId) ?? 0) + 1;
   newsMapRequests.set(currentClusterId, request);
-  dynClusters.set(currentClusterId, { ...currentCluster, mainNewsId: newsId, relatedNewsIds: [] });
+  if (!keep || currentCluster.mainNewsId !== newsId) {
+    dynClusters.set(currentClusterId, {
+      ...currentCluster, mainNewsId: newsId, relatedNewsIds: [],
+      sameStory: {}, sameStoryTotals: {}, mapSelection: undefined,
+    });
+  }
+  const params = new URLSearchParams({ limit: String(limit), tier: 'FREE', expand: String(expand) });
   const relatedData = await apiGet<ApiRelatedResponse>(
-    `/news/${encodeURIComponent(newsId)}/related?limit=${limit}&tier=FREE`,
+    `/news/${encodeURIComponent(newsId)}/related?${params}`,
   );
   if (newsMapRequests.get(currentClusterId) !== request) return resolveCluster(currentClusterId);
 
   const relatedIds: string[] = [];
+  const sameStory: Record<string, string[]> = {};
+  const sameStoryTotals: Record<string, number> = {};
+  const cacheStory = (ownerId: string, cards: ApiNewsCard[] | undefined, total: number | undefined) => {
+    const ids = (cards ?? []).map((card, index) => {
+      const news = apiCardToNewsCard(card, currentCluster.query, index + 1);
+      dynNews.set(news.id, news);
+      return news.id;
+    });
+    if (ids.length > 0) {
+      sameStory[ownerId] = ids;
+      sameStoryTotals[ownerId] = Math.max(total ?? ids.length, ids.length);
+    }
+  };
 
   relatedData.related_news
     .slice(0, limit)
@@ -287,16 +321,33 @@ export async function fetchAndCacheNewsMap(
       const card = apiCardToNewsCard(item, currentCluster.query, index + 1);
       dynNews.set(card.id, card);
       relatedIds.push(card.id);
+      cacheStory(card.id, item.same_story, item.same_story_total);
     });
+  cacheStory(newsId, relatedData.center_same_story, relatedData.center_same_story_total);
 
   const nextCluster: IssueCluster = {
-    ...currentCluster,
+    ...resolveCluster(currentClusterId),
     id: currentClusterId,
     mainNewsId: newsId,
     relatedNewsIds: relatedIds,
+    sameStory,
+    sameStoryTotals,
+    mapSelection: relatedData.selection ?? undefined,
   };
   dynClusters.set(currentClusterId, nextCluster);
   return nextCluster;
+}
+
+/**
+ * 확장 요청이 실패하면 이미 표시한 최초 결과를 유지하되, 화면 상태를
+ * '부분 결과'로 맞춘다. 같은 중심의 최신 요청이 아니면 아무것도 바꾸지 않는다.
+ */
+export function markNewsMapPartial(newsId: string, clusterId: string, reason: string): IssueCluster {
+  const cluster = resolveCluster(clusterId);
+  if (cluster.mainNewsId !== newsId || cluster.mapSelection?.status !== 'expandable') return cluster;
+  const next: IssueCluster = { ...cluster, mapSelection: { ...cluster.mapSelection, status: 'partial', reason } };
+  dynClusters.set(clusterId, next);
+  return next;
 }
 
 export async function fetchAndCacheNewsSource(newsId: string): Promise<NewsCard> {
