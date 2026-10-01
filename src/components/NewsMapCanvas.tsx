@@ -91,9 +91,9 @@ export function NewsMapCanvas({
             // 미니맵(compact)은 다른 기사의 상세로 건너뛰는 용도라 항상 제외한다.
             //
             // 기준이 지름 210 이었는데, 연관 뉴스가 5~6개면 데스크톱 노드도 201px 로
-            // 줄어 중심 교체와 pill 이 통째로 사라졌다. 실제 백엔드는 /related(FREE
-            // 3건) + /graph 보충으로 보통 5~6개를 주므로, 정상 상황에서 맵 탐색이
-            // 막히는 셈이었다. 모바일(124px)은 예전처럼 노드를 누르면 상세로 간다.
+            // 줄어 중심 교체와 pill 이 통째로 사라졌다. 현재는 /related의 서버 순서와
+            // FREE 상한을 유지하며 /graph로 보충하지 않는다. 모바일(124px)은
+            // 예전처럼 노드를 누르면 상세로 간다.
             const showPill = !compact && node.size >= 160;
             const canFocus = !isCenter && showPill && !!onFocusNews;
 

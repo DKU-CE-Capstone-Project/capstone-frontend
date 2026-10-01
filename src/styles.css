@@ -572,6 +572,10 @@ p {
   left: 50%;
   top: 76px;
   transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  width: max-content;
+  box-sizing: border-box;
+  margin: 0;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);

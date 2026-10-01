@@ -2,7 +2,7 @@
 
 실시간 뉴스 기반 멀티 에이전트 투자 판단 지원 시스템의 프론트엔드입니다.
 
-React, TypeScript, Vite 기반으로 구현되어 있습니다. 이 README는 **2026-09-30 로컬 `article-api` 브랜치**의 화면·데이터 처리를 설명합니다. 프로젝트 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)이며 기존 뉴스 세션 경로의 2026-09-21 병합 기록과 이번 로컬 뉴스맵 변경을 구분합니다. 백엔드 `article-api`의 `/api/v1`에 연결하며 [API 명세](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-api-spec.md)의 날짜별 계약을 참고합니다. 이번 변경의 원격 반영·운영 배포는 수행하지 않았습니다.
+React, TypeScript, Vite 기반으로 구현되어 있습니다. 이 README는 **2026-10-01 로컬 `article-api` 브랜치**의 화면·데이터 처리를 설명합니다. 작업 시작 커밋은 `118e934d4c827a9d33e4c5e84fd782dda2e4aa01`이며 미커밋 변경 없이 시작했습니다. 결과 커밋은 정본 `docs/99-verification.md`의 2026-10-01 기록에 남깁니다. 프로젝트 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)이며 기존 뉴스 세션 경로의 2026-09-21 병합 기록과 이번 로컬 뉴스맵 변경을 구분합니다. 백엔드 `article-api`의 `/api/v1`에 연결하며 [API 명세](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-api-spec.md)의 날짜별 계약을 참고합니다. 원격 반영·운영 배포는 수행하지 않았습니다.
 
 ## 작업 브랜치의 뉴스 경로
 
@@ -19,6 +19,12 @@ React, TypeScript, Vite 기반으로 구현되어 있습니다. 이 README는 **
 API 비밀키는 백엔드에만 둔다. Gemini 3.5 Flash-Lite / Flex 설정 역시 백엔드의 책임이다. Flex 요청은 오래 걸릴 수 있어 Nginx의 API 대기 시간을 1500초로 맞췄다. MongoDB 실제 준비 상태는 `/ready`로 프록시한다.
 
 검색·연관 기사 응답을 같은 카드 변환기로 처리하고 서버의 `keywords`·`categories`를 상세 태그에 표시한다. 검색 캐시에 없던 연관 기사도 `/related` 응답만으로 상세 정보를 채운다. 구버전 응답에서 필드가 빠졌을 때만 기존 캐시를 재사용하며, 명시적인 빈 태그 배열은 그대로 반영한다. 기사 태그 표시와 키워드맵 연관어 선정은 별개다. 뉴스 기반 연관 키워드, 다단계 확장, 새 프론트 프로토타입 포팅은 포함하지 않는다.
+
+## 반복 보도 개선과 적은 결과 안내 (2026-10-01)
+
+뉴스맵은 백엔드가 명확한 중복 → 최소 연관도 → 같은 사건의 반복 정보 → MMR 다양성 → 요금제 limit 순으로 선정한 결과를 표시합니다. **점수는 중심과의 연관도이며 최종 순서는 점수 내림차순과 다를 수 있습니다.** [데이터 어댑터](src/data/apiAdapter.ts)는 이미 서버 배열 순서·이전 중심 응답 차단·캐시 없는 상세 메타데이터 보존·보충 없음 계약을 지켜 이번에는 수정하지 않았습니다. `/graph`·최초 검색 결과·샘플 기사로 부족한 개수를 채우지 않습니다.
+
+[상태 안내](src/components/NewsMapStatus.tsx)는 0개에는 기준을 통과한 기사가 없다는 설명, 1·2개에는 선정 개수와 관련성/반복 보도 기준 안내를 표시합니다. 로딩 중에는 적은 결과 안내를 숨깁니다. 요청 실패는 정상 빈 결과와 구분하며 뉴스맵 오류를 토스트와 별도로 유지해 토스트를 닫거나 자동 소멸해도 오류가 남습니다. 새 중심·키워드를 열 때 오류와 이전 주변 결과를 비우고 늦은 응답을 차단합니다. 카드·레이아웃·최초 중심 선정은 유지했습니다. 추가 검색·뉴스맵 임베딩은 백엔드 책임이며 기사 쌍별 생성 API나 본문 요청은 프론트에서 발생하지 않습니다.
 
 ## 기술 스택
 
@@ -242,7 +248,25 @@ docker build --platform linux/amd64 --build-arg VITE_API_BASE= -t econmind-front
 
 2026-09-18 로컬 타입 검사·Vite 빌드와 amd64 Docker 빌드를 확인했습니다. 이는 당시 브랜치 빌드 기록이며 현재 운영 배포 결과를 뜻하지 않습니다. 날짜별 검증 범위는 정본 `docs/99-verification.md`를 참고합니다.
 
-## 뉴스맵 로컬 검증 (2026-09-30)
+## 뉴스맵 로컬 검증 (2026-10-01)
+
+```bash
+npm test
+npm run build
+```
+
+[테스트](scripts/test-news-map.mjs) **14개 통과**, TypeScript 타입 검사와 Vite 빌드(1,995 modules) 성공. 의도적으로 점수 내림차순과 다른 서버 MMR 순서, 0·1·2개 정확한 개수, 그래프 보충 없음, 늦은 응답/실패 처리, 캐시 없는 상세 정보, 서버 태그 보존을 확인했습니다. 실제 상태 컴포넌트 SSR과 데스크톱·모바일·작은 화면의 노드 좌표 검사도 포함합니다.
+
+로컬 fixture API와 실제 Vite 화면을 브라우저에서 조작해 0·1·2개 결과, 주변 기사 상세의 description·출처·발행 시각·링크·키워드·카테고리, 토스트를 닫은 뒤의 오류 안내를 확인했습니다. fixture는 직접 작성한 가상 기사이며 **실제 백엔드/외부 API/한국어 뉴스의 의미 품질 검증이 아닙니다**. 브라우저 조작은 데스크톱에서 실행했고 모바일은 좌표/SSR 검사 범위입니다. 앱 Docker 이미지·운영 배포는 이번에 검증하지 않았습니다.
+
+재현할 때 별도 터미널에서 아래 두 프로세스를 실행하고 추천어 `검증0`, `검증1`, `검증2`, `검증오류`의 키워드 노드를 엽니다. 로컬 loopback fixture는 외부 요청을 하지 않습니다.
+
+```bash
+python3 scripts/serve-news-map-fixtures.py
+VITE_API_BASE=http://127.0.0.1:9031 npm run dev -- --host 127.0.0.1 --port 5191 --strictPort
+```
+
+## 뉴스맵 과거 검증 기록 (2026-09-30)
 
 ```bash
 npm test

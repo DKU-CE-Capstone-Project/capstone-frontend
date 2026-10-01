@@ -38,6 +38,7 @@ import {
 } from './motion/presets';
 import { KeywordMap } from './components/KeywordMap';
 import { NewsMapCanvas } from './components/NewsMapCanvas';
+import { NewsMapStatus } from './components/NewsMapStatus';
 import { EmptyState, LoadingOverlay, MapSkeleton, SmartImage, ThemeToggle, Toast } from './components/ui';
 
 type Screen = 'home' | 'searchResults' | 'newsMap' | 'newsDetail' | 'report';
@@ -65,6 +66,7 @@ function App() {
   const [isExpandingMap, setIsExpandingMap] = useState(false);
   const newsMapRequest = useRef(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [newsMapError, setNewsMapError] = useState<string | null>(null);
   /**
    * apiAdapter 의 클러스터 캐시는 모듈 레벨 Map 이라 갱신해도 React 가 모른다.
    * 화면 전환 없이 캐시만 바뀌는 경우(맵 중심 교체)에 다시 읽게 하는 신호.
@@ -123,6 +125,9 @@ function App() {
   };
 
   const openCluster = async (term: string) => {
+    ++newsMapRequest.current;
+    setNewsMapError(null);
+    setIsExpandingMap(false);
     const trimmed = term.trim();
     setLoadingLabel('연관 키워드를 찾는 중…');
     setErrorMsg(null);
@@ -148,10 +153,14 @@ function App() {
   };
 
   const openKeywordNewsMap = async (term: string) => {
+    const request = ++newsMapRequest.current;
+    setNewsMapError(null);
+    setIsExpandingMap(false);
     setLoadingLabel('관련 뉴스를 모으는 중…');
     setErrorMsg(null);
     try {
       const nextCluster = await fetchAndCacheNewsCluster(term);
+      if (request !== newsMapRequest.current) return;
       setQuery(term || nextCluster.query);
       setActiveClusterId(nextCluster.id);
       setCenterNewsId(nextCluster.mainNewsId);
@@ -162,18 +171,23 @@ function App() {
         setLoadingLabel('연관 뉴스를 잇는 중…');
         if (nextCluster.mainNewsId) await loadNeighbours(nextCluster.mainNewsId, nextCluster.id);
       } catch (error) {
-        setErrorMsg(errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.'));
+        if (request !== newsMapRequest.current) return;
+        const message = errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.');
+        setErrorMsg(message);
+        setNewsMapError(message);
       }
 
+      if (request !== newsMapRequest.current) return;
       navigate('newsMap');
     } catch (error) {
+      if (request !== newsMapRequest.current) return;
       setQuery(term);
       setCenterNewsId('');
       setDetailNewsId('');
       setErrorMsg(errorMessage(error, '뉴스 검색에 실패했습니다.', '잠시 후 다시 검색해 주세요.'));
       navigate('newsMap');
     } finally {
-      setLoadingLabel(null);
+      if (request === newsMapRequest.current) setLoadingLabel(null);
     }
   };
 
@@ -217,13 +231,16 @@ function App() {
     const request = ++newsMapRequest.current;
     const clusterId = activeCluster.id;
     setErrorMsg(null);
+    setNewsMapError(null);
     setCenterNewsId(newsId);
     setIsExpandingMap(true);
     try {
       await loadNeighbours(newsId, clusterId);
     } catch (error) {
       if (request === newsMapRequest.current) {
-        setErrorMsg(errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.'));
+        const message = errorMessage(error, '연관 기사를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.');
+        setErrorMsg(message);
+        setNewsMapError(message);
       }
     } finally {
       setClusterRevision((v) => v + 1);
@@ -280,6 +297,7 @@ function App() {
                 relatedNews={visibleNews}
                 busy={loadingLabel !== null}
                 expanding={isExpandingMap}
+                error={newsMapError}
                 onOpenDetail={openDetail}
                 onFocusNews={focusNews}
               />
@@ -507,6 +525,7 @@ function NewsMapView({
   relatedNews,
   busy,
   expanding,
+  error,
   onOpenDetail,
   onFocusNews,
 }: {
@@ -514,6 +533,7 @@ function NewsMapView({
   relatedNews: NewsCard[];
   busy: boolean;
   expanding: boolean;
+  error: string | null;
   onOpenDetail: (newsId: string) => void;
   onFocusNews: (newsId: string) => void;
 }) {
@@ -548,6 +568,7 @@ function NewsMapView({
         )}
       </AnimatePresence>
 
+      <NewsMapStatus count={relatedNews.length} pending={busy || expanding} error={error} />
       <PremiumPreview />
     </>
   );

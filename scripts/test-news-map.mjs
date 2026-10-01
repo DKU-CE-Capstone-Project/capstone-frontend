@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { after, beforeEach, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 
 // Exercise the production adapter with mocked HTTP; no extra test framework.
 const temporary = await mkdtemp(join(tmpdir(), 'econmind-news-map-'));
@@ -14,6 +16,14 @@ await build({
   platform: 'node', outfile: bundle, define: { 'import.meta.env': '{}' },
 });
 const adapter = await import(pathToFileURL(bundle).href);
+await build({
+  entryPoints: ['src/components/NewsMapStatus.tsx', 'src/layout/mapLayout.ts'], bundle: true,
+  format: 'esm', platform: 'node', outdir: join(temporary, 'view'), outbase: 'src',
+  // Resolve React from this project's lockfile rather than the temporary directory.
+  external: [],
+});
+const { NewsMapStatus } = await import(pathToFileURL(join(temporary, 'view/components/NewsMapStatus.js')).href);
+const layout = await import(pathToFileURL(join(temporary, 'view/layout/mapLayout.js')).href);
 const originalFetch = globalThis.fetch;
 after(async () => {
   globalThis.fetch = originalFetch;
@@ -44,15 +54,16 @@ test('search preserves first center and does not display unscored candidates', a
   assert.ok(adapter.dynNews.has('candidate'));
 });
 
-test('server relevance order survives distance differences without graph top-up', async () => {
+test('server MMR order survives descending score and distance differences without graph top-up', async () => {
   cluster();
   const calls = [];
   globalThis.fetch = async (url) => {
     calls.push(String(url));
-    return ok({ related_news: [item('high', 2), item('lower', 1)] });
+    return ok({ related_news: [{ ...item('first', 2), relevance_score: .95 },
+      { ...item('diverse', 1), relevance_score: .72 }, { ...item('higher-score', 1), relevance_score: .9 }] });
   };
   const result = await adapter.fetchAndCacheNewsMap('center', 'test', 6);
-  assert.deepEqual(result.relatedNewsIds, ['high', 'lower']);
+  assert.deepEqual(result.relatedNewsIds, ['first', 'diverse', 'higher-score']);
   assert.equal(calls.length, 1);
   assert.ok(calls[0].includes('/related?limit=6&tier=FREE'));
 });
@@ -167,4 +178,44 @@ test('empty description keeps the server compatibility summary', async () => {
   globalThis.fetch = async () => ok({ related_news: [card] });
   await adapter.fetchAndCacheNewsMap('center', 'test');
   assert.equal(adapter.findKnownNews(card.news_id).summary, card.summary);
+});
+
+for (const count of [0, 1, 2]) {
+  test(`${count} neighbours preserve exact count, order and uncached metadata with useful status`, async () => {
+    cluster();
+    const cards = Array.from({ length: count }, (_, i) => fullCard(`new-${i}`));
+    const calls = [];
+    globalThis.fetch = async (url) => {
+      calls.push(String(url));
+      return ok({ related_news: cards });
+    };
+    const result = await adapter.fetchAndCacheNewsMap('center', 'test');
+    assert.deepEqual(result.relatedNewsIds, cards.map(c => c.news_id));
+    assert.equal(calls.length, 1);
+    for (const card of cards) {
+      const cached = adapter.findKnownNews(card.news_id);
+      assert.equal(cached.summary, card.description);
+      assert.equal(cached.sourceUrl, card.source_url);
+      assert.deepEqual(cached.keywords, card.keywords);
+    }
+    for (const profile of [layout.NEWS_PROFILE_FULL, layout.NEWS_PROFILE_MOBILE, layout.NEWS_PROFILE_COMPACT]) {
+      const nodes = layout.layoutNewsMap('center', result.relatedNewsIds, profile);
+      assert.deepEqual(nodes.map(n => n.id), ['center', ...result.relatedNewsIds]);
+      assert.equal(nodes.length, count + 1);
+      assert.ok(nodes.every(n => [n.x, n.y, n.size].every(Number.isFinite)));
+      assert.ok(nodes.every(n => n.x - n.size / 2 >= 0 && n.x + n.size / 2 <= profile.field.width
+        && n.y - n.size / 2 >= 0 && n.y + n.size / 2 <= profile.field.height));
+    }
+    const markup = renderToStaticMarkup(createElement(NewsMapStatus, { count, pending: false, error: null }));
+    assert.ok(markup.includes('role="status"'));
+    assert.ok(markup.includes(count === 0 ? '연결할 연관 기사가 없습니다' : `연관 기사 ${count}개`));
+    assert.equal(renderToStaticMarkup(createElement(NewsMapStatus, { count, pending: true, error: null })), '');
+  });
+}
+
+test('map status retains explicit error and omits shortage notice for a full map', () => {
+  const markup = renderToStaticMarkup(createElement(NewsMapStatus, { count: 0, pending: false, error: '추가 검색 실패' }));
+  assert.ok(markup.includes('role="alert"') && markup.includes('추가 검색 실패'));
+  assert.ok(!markup.includes('연결할 연관 기사가 없습니다'));
+  assert.equal(renderToStaticMarkup(createElement(NewsMapStatus, { count: 3, pending: false, error: null })), '');
 });
