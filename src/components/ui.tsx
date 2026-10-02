@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, ImageOff, Moon, Sun, X } from 'lucide-react';
+import { AlertTriangle, Lock, Moon, Sun, X } from 'lucide-react';
 import {
   easeOut,
   overlayVariants,
   springSnappy,
+  springSoft,
   toastVariants,
   useMotionSafe,
 } from '../motion/presets';
@@ -136,54 +137,6 @@ export function Toast({ message, onDismiss }: { message: string | null; onDismis
   );
 }
 
-// ── 이미지 ──────────────────────────────────────────────────────────
-/**
- * 백엔드 thumbnail_url이 404이거나 외부 이미지 호스트가 막히면 기존에는
- * 깨진 이미지 아이콘이 그대로 노출됐다. 로드 실패 시 톤 배경으로 대체한다.
- */
-export function SmartImage({
-  src,
-  alt,
-  className,
-  eager = false,
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-  eager?: boolean;
-}) {
-  const [failed, setFailed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    setFailed(false);
-    setLoaded(false);
-  }, [src]);
-
-  if (!src || failed) {
-    return (
-      <span className={`${className ?? ''} image-fallback`} role="img" aria-label={alt}>
-        <ImageOff size={18} aria-hidden="true" />
-      </span>
-    );
-  }
-
-  return (
-    <motion.img
-      className={className}
-      src={src}
-      alt={alt}
-      loading={eager ? 'eager' : 'lazy'}
-      decoding="async"
-      onError={() => setFailed(true)}
-      onLoad={() => setLoaded(true)}
-      initial={false}
-      animate={{ opacity: loaded ? 1 : 0 }}
-      transition={easeOut}
-    />
-  );
-}
-
 // ── 빈 상태 ─────────────────────────────────────────────────────────
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -191,5 +144,26 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
       <strong>{title}</strong>
       {hint && <p>{hint}</p>}
     </div>
+  );
+}
+
+// ── 유료 프리뷰 ─────────────────────────────────────────────────────
+export function PremiumPreview() {
+  return (
+    <motion.aside
+      className="premium-preview"
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ ...springSoft, delay: 0.3 }}
+      aria-label="유료 기능 프리뷰"
+    >
+      <div className="premium-header">
+        <Lock size={14} aria-hidden="true" />
+        <strong>유료 프리뷰</strong>
+      </div>
+      <button type="button" disabled>뉴스 선택/제외</button>
+      <button type="button" disabled>연관도 상세</button>
+      <button type="button" disabled>심화 리포트</button>
+    </motion.aside>
   );
 }
