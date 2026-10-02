@@ -1502,22 +1502,20 @@ p {
 }
 
 /* 패널이 열리면 헤더와 하단 네비를 패널 왼쪽 영역으로 옮겨 가려지지 않게 한다 */
-@media (min-width: 1024px) {
-  .prototype-frame[data-panel='detail'] .header-bar {
-    right: calc(520px + var(--space-6));
-  }
+.prototype-frame[data-panel='detail'] .header-bar {
+  right: calc(520px + var(--space-6));
+}
 
-  .prototype-frame[data-panel='report'] .header-bar {
-    right: calc(720px + var(--space-6));
-  }
+.prototype-frame[data-panel='report'] .header-bar {
+  right: calc(720px + var(--space-6));
+}
 
-  .prototype-frame[data-panel='detail'] .bottom-controls {
-    right: 520px;
-  }
+.prototype-frame[data-panel='detail'] .bottom-controls {
+  right: 520px;
+}
 
-  .prototype-frame[data-panel='report'] .bottom-controls {
-    right: 720px;
-  }
+.prototype-frame[data-panel='report'] .bottom-controls {
+  right: 720px;
 }
 
 /* ══ 유료 프리뷰 ═════════════════════════════════════════════════════ */
@@ -1728,7 +1726,8 @@ p {
 }
 
 /* ══ 반응형 ══════════════════════════════════════════════════════════
- * 키워드 맵 좌표는 mapLayout.ts의 프로필, 뉴스맵 카메라는 NewsMapExplorer가 담당한다.
+ * 검색창·키워드 맵만 대상이다. 키워드 맵 좌표는 mapLayout.ts의 프로필이 담당한다.
+ * 뉴스맵(03)은 프로토타입처럼 1280×832 데스크톱 전용이다.
  * 기존에는 이 구간이 274줄(전체의 23%)로, 같은 노드 위치를 세 번 적고 있었다.
  * ════════════════════════════════════════════════════════════════════ */
 
@@ -1748,16 +1747,6 @@ p {
     left: var(--space-4);
     right: var(--space-4);
     top: var(--space-4);
-  }
-
-  .premium-preview {
-    right: var(--space-4);
-  }
-
-  /* 왼쪽에 지도를 남길 폭이 없으므로 패널이 화면 전체를 덮는다 */
-  .detail-sheet,
-  .report-sheet {
-    width: 100%;
   }
 
   .toast {
@@ -1794,99 +1783,8 @@ p {
     padding: 84px var(--space-3) 96px;
   }
 
-  /* 세로 카드 → 가로 한 줄. 좁은 화면에서 맵을 덜 가린다 */
-  .premium-preview {
-    left: var(--space-3);
-    right: var(--space-3);
-    top: auto;
-    bottom: 92px;
-    width: auto;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    overflow-x: auto;
-  }
-
-  .premium-header {
-    flex: 0 0 auto;
-  }
-
-  .premium-header strong {
-    display: none;
-  }
-
-  .premium-preview button {
-    flex: 0 0 auto;
-    min-height: 30px;
-    padding-inline: var(--space-3);
-  }
-
   .toast {
     bottom: 156px;
-  }
-
-  /* 뉴스맵: 도움말·미니맵은 숨기고 처음으로 버튼은 아이콘만 남긴다.
-     터치에는 Space 키가 없어 카드를 길게 누르면 그 카드 기준으로 검색한다. */
-  .map-help,
-  .map-minimap {
-    display: none;
-  }
-
-  .map-reset {
-    left: var(--space-3);
-    width: 46px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .map-reset span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .selection-tray {
-    top: 66px;
-    gap: var(--space-2);
-    padding-left: var(--space-3);
-  }
-
-  .tray-long {
-    display: none;
-  }
-
-  .map-status-pill {
-    padding-inline: var(--space-3);
-  }
-
-  .detail-sheet-body {
-    padding: var(--space-6) var(--space-4) var(--space-8);
-  }
-
-  .detail-sheet-body h2 {
-    font-size: var(--text-xl);
-  }
-
-  .report-sheet-head {
-    padding: var(--space-4);
-  }
-
-  .report-sheet-body {
-    padding: var(--space-4) var(--space-4) var(--space-10);
-  }
-
-  .report-stocks,
-  .report-strategy {
-    grid-template-columns: 1fr;
-  }
-
-  .report-stock {
-    min-height: 0;
   }
 }
 

@@ -55,7 +55,7 @@ import { PremiumPreview } from './ui';
  * | 조작 | 동작 |
  * | 클릭 | 카드 선택·해제 (리포트 근거) |
  * | 더블클릭 | 그 카드를 화면 가운데로 이동 |
- * | Space + 클릭 (키보드 Shift+Enter, 터치 길게 누르기) | 그 카드 기준 검색 — 처음이면 하위 뉴스 펼치기, 이미 펼쳤으면 재검색 |
+ * | Space + 클릭 (키보드 Shift+Enter) | 그 카드 기준 검색 — 처음이면 하위 뉴스 펼치기, 이미 펼쳤으면 재검색 |
  * | 휠 / 끌기 | 확대·축소 / 화면 이동 (트리 범위 안) |
  */
 
@@ -75,8 +75,6 @@ const DETAIL_WIDTH = 520;
 const REPORT_WIDTH = 720;
 /** 오른쪽 위 유료 프리뷰가 차지하는 폭. 카메라 중심을 그만큼 왼쪽으로 옮긴다. */
 const PREVIEW_GUTTER = 196;
-const WIDE_MIN = 1024;
-const LONG_PRESS_MS = 550;
 
 const RING_OPACITY = [0.95, 0.5, 0.28, 0.16, 0.1, 0.07];
 const RING_WIDTH = [1.8, 1.4, 1.2, 1.1, 1, 1];
@@ -98,7 +96,6 @@ type Drag = {
   el: HTMLDivElement;
   pid: number;
   moved: boolean;
-  pressTimer?: ReturnType<typeof setTimeout>;
 };
 
 function clamp(min: number, value: number, max: number) {
@@ -115,18 +112,15 @@ function resolveCamera(tree: MapTree, camera: Camera, viewport: Viewport) {
   return { focus, lim, base, zoom, pan };
 }
 
+/** 프로토타입은 1280×832 데스크톱 전용이다. 1280×832에서 카메라 중심은 (542, 420)이다. */
 function geometry({ width: W, height: H }: Viewport) {
-  const wide = W >= WIDE_MIN;
-  const detailW = wide ? DETAIL_WIDTH : W;
-  const reportW = wide ? REPORT_WIDTH : W;
   return {
-    wide,
-    cx: wide ? (W - PREVIEW_GUTTER) / 2 : W / 2,
+    cx: (W - PREVIEW_GUTTER) / 2,
     cy: H / 2 + 4,
     /** 상세 패널이 열렸을 때 남는 왼쪽 영역의 가운데 */
-    detailCx: wide ? (W - detailW) / 2 : W / 2,
-    reportCx: wide ? (W - reportW) / 2 : W / 2,
-    reportFit: { w: Math.max(160, W - reportW - 90), h: Math.max(160, H - 272) },
+    detailCx: (W - DETAIL_WIDTH) / 2,
+    reportCx: (W - REPORT_WIDTH) / 2,
+    reportFit: { w: Math.max(160, W - REPORT_WIDTH - 90), h: Math.max(160, H - 272) },
   };
 }
 
@@ -183,7 +177,6 @@ export function NewsMapExplorer({
   const reportAbort = useRef<AbortController | null>(null);
   const wheelTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const alive = useRef(true);
-  const fitted = useRef(false);
 
   // ── 자동 정렬 루프 ───────────────────────────────────────────────
   const startSim = useCallback(() => {
@@ -215,27 +208,6 @@ export function NewsMapExplorer({
       clearTimeout(wheelTimer.current);
     };
   }, [startSim]);
-
-  /** 좁은 화면은 처음부터 카드가 모두 보이게 시작한다. 키워드 궤도까지 맞추면 카드 글자를 읽을 수 없다. */
-  const homeZoom = useCallback((t: MapTree, vp: Viewport) => {
-    if (vp.width >= 720) return 1;
-    let x = 0, y = 0;
-    for (const id of t.order) {
-      const n = t.nodes[id];
-      x = Math.max(x, Math.abs(n.x) + sizeOf(n) / 2);
-      y = Math.max(y, Math.abs(n.y) + sizeOf(n) / 2);
-    }
-    const fit = Math.min((vp.width * 0.94) / (2 * x), (vp.height * 0.6) / (2 * y), 1);
-    return Math.max(zoomLimits(t, t.nodes.root, vp).min, fit);
-  }, []);
-
-  useEffect(() => {
-    if (fitted.current || !size.width) return;
-    fitted.current = true;
-    // 처음 측정된 크기로 한 번만 맞춘다.
-    const uz = homeZoom(tree, viewport);
-    if (uz !== 1) setCamera((c) => ({ ...c, uz }));
-  }, [size.width]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 동작 ─────────────────────────────────────────────────────────
 
@@ -381,7 +353,7 @@ export function NewsMapExplorer({
     velRef.current = {};
     loadingRef.current = null;
     setLoadingId(null);
-    setCamera({ focus: 'root', uz: homeZoom(treeRef.current, viewport), pan: { x: 0, y: 0 } });
+    setCamera({ focus: 'root', uz: 1, pan: { x: 0, y: 0 } });
     setSel([]);
     setDetailId(null);
     setReportOpen(false);
@@ -454,17 +426,7 @@ export function NewsMapExplorer({
     if (detailId || reportOpen) return; // 상세·리포트 중에는 화면 고정
     if (e.button !== 0) return;
     const { pan } = resolveCamera(tree, camera, viewport);
-    const drag: Drag = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, el: e.currentTarget, pid: e.pointerId, moved: false };
-    // 터치에는 Space 키가 없으므로 카드를 길게 누르면 그 카드 기준으로 검색한다.
-    const nodeId = (e.target as Element).closest<HTMLElement>('[data-node-id]')?.dataset.nodeId;
-    if (e.pointerType === 'touch' && nodeId) {
-      drag.pressTimer = setTimeout(() => {
-        if (dragRef.current !== drag || drag.moved) return;
-        justDragged.current = true; // 손을 뗄 때의 클릭(선택)을 막는다
-        void research(nodeId);
-      }, LONG_PRESS_MS);
-    }
-    dragRef.current = drag;
+    dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y, el: e.currentTarget, pid: e.pointerId, moved: false };
   };
 
   const panMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -475,7 +437,6 @@ export function NewsMapExplorer({
     if (!d.moved) {
       if (Math.hypot(dx, dy) < 4) return;
       d.moved = true;
-      clearTimeout(d.pressTimer);
       try {
         d.el.setPointerCapture(d.pid);
       } catch {
@@ -491,7 +452,6 @@ export function NewsMapExplorer({
     const d = dragRef.current;
     dragRef.current = null;
     if (!d) return;
-    clearTimeout(d.pressTimer);
     try {
       d.el.releasePointerCapture(d.pid);
     } catch {
@@ -500,8 +460,8 @@ export function NewsMapExplorer({
     if (d.moved) {
       justDragged.current = true;
       setDragging(false);
+      setTimeout(() => { justDragged.current = false; }, 0);
     }
-    if (justDragged.current) setTimeout(() => { justDragged.current = false; }, 0);
   };
 
   const panClickGuard = (e: ReactMouseEvent) => {
@@ -757,7 +717,7 @@ export function NewsMapExplorer({
           className="selection-tray"
           role="region"
           aria-label="선택한 뉴스"
-          style={{ left: detailNode && geo.wide ? geo.detailCx : '50%' }}
+          style={{ left: detailNode ? geo.detailCx : '50%' }}
         >
           <span className="tray-count">
             <span className="tray-badge">{selCount}</span>건 선택됨
@@ -765,7 +725,7 @@ export function NewsMapExplorer({
           <button type="button" className="btn-ghost" onClick={clearSel}>선택 해제</button>
           <button type="button" className="btn-brand" onClick={() => openReport(null)}>
             <FileText size={14} aria-hidden="true" />
-            <span className="tray-long">선택한 뉴스로 </span>리포트 만들기
+            선택한 뉴스로 리포트 만들기
           </button>
         </div>
       )}
