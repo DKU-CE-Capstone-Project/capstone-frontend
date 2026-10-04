@@ -2,13 +2,14 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, FileText, Search } from 'lucide-react';
 import {
-  MOCK_HOME_KEYWORDS,
-  fetchMockKeywordMap,
-  fetchMockNewsMap,
-  fetchMockRecommendedKeywords,
-  type MockKeywordMap,
-  type MockNewsMap,
-} from './data/mockNewsMap';
+  DEFAULT_HOME_KEYWORDS,
+  ServiceError,
+  fetchKeywordMap,
+  fetchNewsMap,
+  fetchRecommendedKeywords,
+  type KeywordMapData,
+  type NewsMapData,
+} from './data/newsMapService';
 import { useTheme } from './design/useTheme';
 import { MAX_KEYWORD_NODES } from './layout/mapLayout';
 import {
@@ -32,7 +33,8 @@ import { EmptyState, LoadingOverlay, MapSkeleton, ThemeToggle, Toast } from './c
 
 /**
  * 뉴스맵 프로토타입(design/newsmap-prototype, 2026-09-27) 적용 화면.
- * 01 검색창 → 02 키워드 맵 → 03 뉴스맵(상세·레포트 포함). 검색·뉴스·리포트는 mock 서비스를 쓴다.
+ * 01 검색창 → 02 키워드 맵 → 03 뉴스맵(상세·레포트 포함). 데이터는 newsMapService.ts —
+ * 기본 실제 API, VITE_NEWS_MAP_SOURCE=mock 이면 브라우저 mock 서비스.
  */
 type Screen = 'home' | 'searchResults' | 'newsMap';
 
@@ -52,20 +54,20 @@ function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [history, setHistory] = useState<Screen[]>([]);
   const [query, setQuery] = useState('');
-  const [keywordMap, setKeywordMap] = useState<MockKeywordMap>({ query: '', keywords: [] });
-  const [newsMap, setNewsMap] = useState<MockNewsMap | null>(null);
+  const [keywordMap, setKeywordMap] = useState<KeywordMapData>({ query: '', keywords: [] });
+  const [newsMap, setNewsMap] = useState<NewsMapData | null>(null);
   /** 같은 키워드를 다시 열어도 뉴스맵을 처음 상태로 새로 그린다. */
   const [newsMapKey, setNewsMapKey] = useState(0);
   const [mapChrome, setMapChrome] = useState<NewsMapChrome>(INITIAL_CHROME);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [recommendedKeywords, setRecommendedKeywords] = useState(MOCK_HOME_KEYWORDS);
+  const [recommendedKeywords, setRecommendedKeywords] = useState(DEFAULT_HOME_KEYWORDS);
   const request = useRef(0);
   const explorer = useRef<NewsMapExplorerHandle>(null);
 
   useEffect(() => {
     let isMounted = true;
-    fetchMockRecommendedKeywords(8)
+    fetchRecommendedKeywords(8)
       .then((keywords) => {
         if (isMounted && keywords.length > 0) setRecommendedKeywords(keywords);
       })
@@ -97,13 +99,16 @@ function App() {
     setLoadingLabel('연관 키워드를 찾는 중…');
     setErrorMsg(null);
     try {
-      const next = await fetchMockKeywordMap(term);
+      const next = await fetchKeywordMap(term);
       if (current !== request.current) return;
       setQuery(next.query);
       setKeywordMap(next);
       navigate('searchResults');
-    } catch {
-      if (current === request.current) setErrorMsg('연관 키워드를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } catch (error) {
+      if (current === request.current) {
+        setErrorMsg(error instanceof ServiceError && error.status < 500 && error.status !== 0
+          ? error.message : '연관 키워드를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      }
     } finally {
       if (current === request.current) setLoadingLabel(null);
     }
@@ -115,14 +120,18 @@ function App() {
     setLoadingLabel('관련 뉴스를 모으는 중…');
     setErrorMsg(null);
     try {
-      const next = await fetchMockNewsMap(term);
+      const next = await fetchNewsMap(term);
       if (current !== request.current) return;
       setNewsMap(next);
       setNewsMapKey((k) => k + 1);
       setMapChrome(INITIAL_CHROME);
       navigate('newsMap');
-    } catch {
-      if (current === request.current) setErrorMsg('뉴스 검색에 실패했습니다. 잠시 후 다시 검색해 주세요.');
+    } catch (error) {
+      if (current === request.current) {
+        // 검색 결과 없음(404)은 그대로 알리고, 서버·네트워크 오류는 재시도를 안내한다.
+        setErrorMsg(error instanceof ServiceError && error.status === 404
+          ? error.message : '뉴스 검색에 실패했습니다. 잠시 후 다시 검색해 주세요.');
+      }
     } finally {
       if (current === request.current) setLoadingLabel(null);
     }

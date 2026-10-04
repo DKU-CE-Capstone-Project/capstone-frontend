@@ -4,7 +4,31 @@
 
 React, TypeScript, Vite 기반으로 구현되어 있습니다. 이 README는 **2026-10-01 로컬 `article-api` 브랜치**의 화면·데이터 처리를 설명합니다. 같은 날 2차 작업 시작 커밋은 `80b945abac761906a0739a7db3a2a58ac7b0f802`이며 미커밋 변경 없이 시작했습니다. 결과 커밋은 정본 `docs/99-verification.md`의 2026-10-01 기록에 남깁니다. 프로젝트 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)이며 기존 뉴스 세션 경로의 2026-09-21 병합 기록과 이번 로컬 뉴스맵 변경을 구분합니다. 백엔드 `article-api`의 `/api/v1`에 연결하며 [API 명세](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/07-api-spec.md)의 날짜별 계약을 참고합니다. 원격 반영·운영 배포는 수행하지 않았습니다.
 
+## 뉴스맵 화면 실제 API 연결 (2026-10-04)
+
+econmind-docs `docs/10-newsmap-api-contract-draft.md`의 확정 계약(D1~D6)으로 화면 데이터를 **실제 백엔드에 연결**했다. 화면은 [`src/data/newsMapService.ts`](src/data/newsMapService.ts)만 부르고, 기본은 `/api/v1`이다. 백엔드 없이 시연할 때는 둘 중 하나를 쓴다.
+
+- `VITE_NEWS_MAP_SOURCE=mock npm run dev` — 브라우저 안 mock 서비스(`mockNewsMap.ts`, 아래 10-02 절의 데이터)
+- `python3 mock-api/server.py` + `VITE_API_BASE=http://127.0.0.1:8000 npm run dev` — 새 계약을 흉내 내는 mock API(`/keywords/related`, `/related?exclude_ids`, `POST /reports {news_ids}` 202 + 단계 진행)
+
+| 화면 기능 | API |
+|---|---|
+| 홈 추천 키워드 | `GET /keywords/recommended` |
+| 검색어 → 키워드맵 | `GET /keywords/related` (검색어 + 연관 키워드 최대 8개) |
+| 키워드 → 최초 뉴스맵 | `GET /news/search` 첫 카드를 중심으로 + `GET /news/{id}/related` (FREE 최대 3건) |
+| 하위 펼치기·재검색 | `GET /news/{id}/related?exclude_ids=` — 맵의 모든 기사와 그 카드의 이전 결과를 제외. 0건이면 "더 찾을 연관 뉴스가 없어요"로 알리고 기존 가지를 유지 |
+| 리포트 | `POST /reports {news_ids}`(최대 5건) → `GET /reports/{id}`를 1→2초 간격 폴링(120초 제한). 서버 `stage`를 3단계 표시에 연결하고, 세션에 진행 중 작업이 있으면(409) 끝나기를 기다렸다 한 번 다시 요청 |
+
+- 탐색 상한: 깊이 4단계, 맵 전체 기사 40건, 카드별 재검색 5회, 리포트 근거 5건.
+- 리포트 패널: 서버 리포트 제목·종목 영향(`direction`)·전략 입장. **전략 성과 목업 차트는 제거**했다(D5). AI 대체 결과(`is_fallback`)·본문 없이 설명만 쓴 근거 수를 안내 문구로 표시한다. 전략이 없으면 전략 영역을 숨긴다.
+- 상세: 원문 URL이 없으면 링크를 숨긴다(일반 NAVER 주소로 대체하지 않음). 발행 시각은 KST로 표시한다.
+- 새로고침 시 탐색 트리는 복원하지 않는다(D6).
+
+로컬 검증(2026-10-04): `npm test` **38개**(기존 28 + 서비스 계층 10), `npm run build`, CI와 같은 `docker compose config --format json | python3 scripts/check-local-compose.py` 통과. mock API + Vite(1280×832)에서 Playwright로 검색→키워드맵→뉴스맵→Shift+Enter 펼치기(제외 목록 전송 확인)→재검색(결과 소진 안내)→2건 선택→리포트(단계 표시 → 완료, 차트 없음)를 조작했고 페이지 오류는 없었다. 실제 백엔드와 외부 API(NAVER·Gemini·Diffbot)를 붙인 화면 검증은 하지 않았다.
+
 ## `newsmap-prototype-mock` 브랜치: 9/27 프로토타입 적용 + mock 데이터 (2026-10-02)
+
+> 2026-10-04부터 화면 기본 데이터는 실제 API다(위 절). 이 절의 mock 데이터는 `VITE_NEWS_MAP_SOURCE=mock`일 때 쓰인다.
 
 `article-api`(`6328595`)에서 만든 브랜치다. [뉴스맵 인터랙션 프로토타입](design/newsmap-prototype/README.md)(2026-09-27)을 기존 디자인 토큰 위에 옮겼고, **검색·뉴스·리포트는 백엔드 대신 mock 서비스**([`src/data/mockNewsMap.ts`](src/data/mockNewsMap.ts))에서 받는다. 백엔드 없이 `npm run dev`만으로 전체 흐름이 동작한다. 아래 기존 절은 `article-api` 당시 기록이다.
 
@@ -149,6 +173,8 @@ VITE_API_BASE=http://127.0.0.1:8000
 ```
 
 환경 변수를 지정하지 않으면 기본값으로 `http://localhost:8000`을 사용합니다.
+
+`VITE_NEWS_MAP_SOURCE=mock`이면 뉴스맵 화면이 백엔드 대신 브라우저 안 mock 서비스를 씁니다(기본은 실제 API).
 
 ## 주요 화면 흐름
 

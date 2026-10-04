@@ -14,12 +14,17 @@ import {
 import { Check, ExternalLink, FileText, LineChart, Newspaper, RotateCcw, X } from 'lucide-react';
 import type { NewsCard, Report } from '../data/mockData';
 import {
-  fetchMockRelated,
-  generateMockReport,
-  mockReportTitle,
-  type MockNewsMap,
+  MAX_DEPTH,
+  MAX_MAP_NEWS,
+  MAX_REPORT_NEWS,
+  MAX_RESEARCH,
+  USE_MOCK,
+  fetchRelated,
+  generateReport,
+  reportTitle,
+  type NewsMapData,
   type ReportPhase,
-} from '../data/mockNewsMap';
+} from '../data/newsMapService';
 import {
   KEYWORD_SIZE,
   addChildren,
@@ -50,7 +55,8 @@ import { PremiumPreview } from './ui';
  * 03 뉴스맵 · 상세 · 레포트 — design/newsmap-prototype/NewsMap.dc.html을 옮긴 화면.
  *
  * 뉴스맵·뉴스 상세·리포트가 한 화면 안에서 이어진다. 상세와 리포트는 오른쪽 패널로
- * 열리고, 카메라가 해당 카드(들)로 이동한다. 데이터는 mock 서비스(mockNewsMap.ts)에서 받는다.
+ * 열리고, 카메라가 해당 카드(들)로 이동한다. 데이터는 newsMapService.ts 에서 받는다
+ * (기본 실제 API, VITE_NEWS_MAP_SOURCE=mock 이면 브라우저 mock).
  *
  * | 조작 | 동작 |
  * | 클릭 | 카드 선택·해제 (리포트 근거) |
@@ -132,7 +138,7 @@ export function NewsMapExplorer({
   orbitRotating = 3,
   orbitSpeed = 1,
 }: {
-  map: MockNewsMap;
+  map: NewsMapData;
   onChrome: (chrome: NewsMapChrome) => void;
   /** 중앙 키워드 궤도의 키워드를 누르면 그 키워드의 키워드맵을 연다. */
   onOpenKeyword: (keyword: string) => void;
@@ -177,6 +183,8 @@ export function NewsMapExplorer({
   const reportAbort = useRef<AbortController | null>(null);
   const wheelTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const alive = useRef(true);
+  /** 노드별 이전 펼치기·재검색 결과 기사 ID — 재검색이 같은 기사를 다시 내지 않게 제외 목록에 넣는다. */
+  const historyRef = useRef<Record<string, string[]>>({});
 
   // ── 자동 정렬 루프 ───────────────────────────────────────────────
   const startSim = useCallback(() => {
@@ -219,19 +227,25 @@ export function NewsMapExplorer({
   const newsOf = (ids: string[]): NewsCard[] =>
     ids.map((id) => tree.nodes[id]?.news).filter((news): news is NewsCard => !!news);
 
-  // 생성 단계 연출: 본문 추출 → 분석 → 전략 (실제 API: POST /reports → GET /reports/{id})
+  // 생성 단계: 본문 추출 → 분석 → 전략 (POST /reports {news_ids} → GET /reports/{id} 폴링)
+  // 같은 기사가 여러 카드에 있어도 근거는 기사 ID 기준으로 한 번만 보낸다.
   const generate = (ids: string[]) => {
     abortReport();
     const controller = new AbortController();
     reportAbort.current = controller;
     setReportPhase(0);
     setReport(null);
-    generateMockReport(map, newsOf(ids), setReportPhase, controller.signal)
+    const evidenceNews = [...new Map(newsOf(ids).map((news) => [news.id, news])).values()];
+    generateReport(map, evidenceNews, setReportPhase, controller.signal)
       .then((next) => {
         if (controller.signal.aborted) return;
         setReport(next);
         setReportPhase(3);
-        setStatus('리포트가 준비됐어요 · Esc로 닫기');
+        const notes = [
+          next.isFallback ? 'AI 분석을 만들지 못해 대체 문구를 표시해요' : '',
+          next.descriptionOnlyCount ? `본문 없이 설명만 쓴 기사 ${next.descriptionOnlyCount}건` : '',
+        ].filter(Boolean);
+        setStatus(notes.length ? `리포트가 준비됐어요 · ${notes.join(' · ')}` : '리포트가 준비됐어요 · Esc로 닫기');
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -285,6 +299,10 @@ export function NewsMapExplorer({
   // 한 번 클릭: 선택/해제. 리포트가 열려 있으면 근거가 바뀐 리포트를 다시 만든다.
   const toggleSelect = (id: string) => {
     const has = sel.includes(id);
+    if (!has && sel.length >= MAX_REPORT_NEWS) {
+      setStatus(`리포트 근거는 최대 ${MAX_REPORT_NEWS}건까지 고를 수 있어요`);
+      return;
+    }
     const next = has ? sel.filter((k) => k !== id) : [...sel, id];
     setSel(next);
     if (reportOpen) {
@@ -315,13 +333,34 @@ export function NewsMapExplorer({
     const short = shortTitle(n.news.title);
     const again = n.expanded;
     const batch = again ? n.batch + 1 : n.batch;
+    // 탐색 상한 (docs/10 D2): 깊이·맵 전체 기사 수·부모별 재검색 횟수
+    if (!again && n.level >= MAX_DEPTH) {
+      setStatus(`‘${short}’ 은 가장 깊은 단계라 더 펼칠 수 없어요`);
+      return;
+    }
+    if (again && batch > MAX_RESEARCH) {
+      setStatus(`‘${short}’ 은 이미 ${MAX_RESEARCH}번 다시 검색했어요`);
+      return;
+    }
+    const shownIds = Object.values(t.nodes).map((node) => node.news.id);
+    if (!again && new Set(shownIds).size >= MAX_MAP_NEWS) {
+      setStatus(`뉴스맵에는 기사를 최대 ${MAX_MAP_NEWS}건까지 펼칠 수 있어요 · 초기화 후 다시 탐색하세요`);
+      return;
+    }
     loadingRef.current = id;
     setLoadingId(id);
     setStatus(again ? `‘${short}’ 기준으로 다시 검색하는 중…` : `‘${short}’ 기준으로 하위 뉴스를 불러오는 중…`);
     try {
-      const kids = await fetchMockRelated(n.news.id, batch, { research: again });
+      const exclude = [...shownIds, ...(historyRef.current[id] ?? [])];
+      const { news: kids } = await fetchRelated(n.news.id, exclude, batch);
       // 기다리는 동안 화면을 나갔거나 처음 뉴스맵으로 돌아갔으면 버린다.
       if (!alive.current || treeRef.current !== t || !t.nodes[id]) return;
+      if (!kids.length) {
+        // 결과 소진은 정상 결과다. 재검색이면 기존 가지를 그대로 둔다.
+        setStatus(`‘${short}’ 기준으로 더 찾을 연관 뉴스가 없어요`);
+        return;
+      }
+      historyRef.current[id] = [...(historyRef.current[id] ?? []), ...kids.map((k) => k.id)];
       if (again) {
         const removed = new Set(removeDescendants(t, id));
         const keep = latest.current.sel.filter((k) => !removed.has(k));
@@ -351,6 +390,7 @@ export function NewsMapExplorer({
     abortReport();
     treeRef.current = createTree(map.root, map.related);
     velRef.current = {};
+    historyRef.current = {};
     loadingRef.current = null;
     setLoadingId(null);
     setCamera({ focus: 'root', uz: 1, pan: { x: 0, y: 0 } });
@@ -805,13 +845,16 @@ export function NewsMapExplorer({
               {shown.news.summary || '[기사 설명 — NAVER 검색 결과의 description이 여기에 표시됩니다]'}
             </p>
           </div>
-          <div className="sheet-link">
-            <span>원문 링크</span>
-            <a href={shown.news.sourceUrl || 'https://n.news.naver.com/'} target="_blank" rel="noreferrer">
-              {shown.news.sourceUrl || '[NAVER 뉴스 원문 URL]'}
-              <ExternalLink size={16} aria-hidden="true" />
-            </a>
-          </div>
+          {/* 원문 URL이 없으면 일반 주소로 대신하지 않고 링크를 숨긴다 (docs/10 § 3.4) */}
+          {shown.news.sourceUrl && (
+            <div className="sheet-link">
+              <span>원문 링크</span>
+              <a href={shown.news.sourceUrl} target="_blank" rel="noreferrer">
+                {shown.news.sourceUrl}
+                <ExternalLink size={16} aria-hidden="true" />
+              </a>
+            </div>
+          )}
           <div className="sheet-tags">
             {shown.news.keywords.map((kw) => <span key={kw}>{kw}</span>)}
           </div>
@@ -841,7 +884,7 @@ export function NewsMapExplorer({
         <div className="report-sheet-head">
           <div>
             <span>AI REPORT · 근거 뉴스 {selCount}건</span>
-            <h2>{mockReportTitle(map, evidence.map((n) => n.news))}</h2>
+            <h2>{reportTitle(map, evidence.map((n) => n.news), reportReady ? report : null)}</h2>
           </div>
           <button type="button" className="sheet-close" onClick={closeReport} aria-label="리포트 닫기 (Esc)">
             <X size={20} strokeWidth={2.2} aria-hidden="true" />
@@ -904,34 +947,30 @@ export function NewsMapExplorer({
                   </article>
                 ))}
               </section>
-              <section className="report-strategy">
-                <div className="report-chart">
-                  <div className="report-chart-head">
-                    <span>전략 성과</span>
-                    <span>목업 차트 · 실제 시세 아님</span>
+              {/* 전략 성과 차트는 실제 시세·백테스트 데이터가 없어 표시하지 않는다 (docs/10 D5) */}
+              {report.strategySummary && (
+                <section className="report-strategy">
+                  <div className="report-stance">
+                    <LineChart size={22} aria-hidden="true" />
+                    <strong>{report.strategySummary.stance}</strong>
+                    <p>{report.strategySummary.rationale}</p>
                   </div>
-                  <div className="report-chart-bars" role="img" aria-label="전략 성과 목업 차트">
-                    {[34, 62, 48, 74, 56, 82, 68].map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}
-                  </div>
-                </div>
-                <div className="report-stance">
-                  <LineChart size={22} aria-hidden="true" />
-                  <strong>{report.strategySummary.stance}</strong>
-                  <p>{report.strategySummary.rationale}</p>
-                </div>
-              </section>
+                </section>
+              )}
               <section className="report-text">
                 <h3>리스크 요인</h3>
                 <div className="sheet-tags">
                   {report.riskFactors.map((risk) => <span key={risk}>{risk}</span>)}
                 </div>
-                {report.strategySummary.riskWarning && (
+                {report.strategySummary?.riskWarning && (
                   <p className="report-warning">{report.strategySummary.riskWarning}</p>
                 )}
               </section>
               <p className="report-disclaimer">
-                리포트 본문은 목업 데이터({map.reportLabel})예요. 실제 서비스에서는 위 근거 뉴스 {selCount}건의
-                본문을 추출해 생성합니다. 투자 권유가 아닌 판단 참고 자료입니다.
+                {USE_MOCK
+                  ? `리포트 본문은 목업 데이터(${map.reportLabel})예요. 실제 서비스에서는 위 근거 뉴스 ${selCount}건의 본문을 추출해 생성합니다. `
+                  : `위 근거 뉴스 ${selCount}건을 바탕으로 AI가 생성했어요.${report.descriptionOnlyCount ? ` 그중 ${report.descriptionOnlyCount}건은 본문을 가져오지 못해 기사 설명만 사용했어요.` : ''}${report.isFallback ? ' AI 분석을 만들지 못해 대체 문구를 표시하고 있어요.' : ''} `}
+                투자 권유가 아닌 판단 참고 자료입니다.
               </p>
             </>
           )}
