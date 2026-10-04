@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/test-news-map.mjs scripts/test-prototype-mock.mjs",
+    "test": "node --test scripts/test-news-map.mjs scripts/test-prototype-mock.mjs scripts/test-news-map-service.mjs",
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview"
