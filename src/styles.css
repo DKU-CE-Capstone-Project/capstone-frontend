@@ -407,7 +407,8 @@ p {
   z-index: var(--z-map-nodes);
 }
 
-.news-node-float {
+.news-node-float,
+.news-node-interaction {
   position: relative;
   width: 100%;
   height: 100%;
@@ -431,7 +432,7 @@ p {
     border-color var(--dur-fast) var(--ease-out);
 }
 
-.news-node:hover {
+.news-node-interaction:hover .news-node {
   border-color: var(--accent-border);
   box-shadow: var(--shadow-node-hover);
 }
@@ -497,12 +498,12 @@ p {
   white-space: nowrap;
 }
 
-.news-node:hover .node-focus-hint,
+.news-node-interaction:hover .node-focus-hint,
 .news-node:focus-visible .node-focus-hint {
   display: inline-flex;
 }
 
-.news-node.is-focusable:hover .node-copy small,
+.news-node-interaction:hover .news-node.is-focusable .node-copy small,
 .news-node.is-focusable:focus-visible .node-copy small {
   display: none;
 }
@@ -512,7 +513,6 @@ p {
   position: absolute;
   left: 50%;
   bottom: 9%;
-  transform: translateX(-50%);
   z-index: 1;
   min-height: 26px;
   padding: var(--space-1) var(--space-3);
@@ -572,6 +572,10 @@ p {
   left: 50%;
   top: 76px;
   transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  width: max-content;
+  box-sizing: border-box;
+  margin: 0;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -583,6 +587,12 @@ p {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   box-shadow: var(--shadow-md);
+}
+
+.map-status.is-warning {
+  border-color: var(--warn-border);
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 
 /* ══ 검색 결과 하단 스트립 ═══════════════════════════════════════════ */
@@ -1289,6 +1299,7 @@ p {
   .map-view {
     padding: 84px var(--space-3) 156px;
   }
+
 
   /* 세로 카드 → 가로 한 줄. 좁은 화면에서 맵을 덜 가린다 */
   .premium-preview {

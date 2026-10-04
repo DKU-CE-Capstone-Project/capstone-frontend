@@ -11,8 +11,17 @@ export type NewsCard = {
   thumbnailTone: 'oil' | 'chip' | 'ai' | 'defense' | 'shipping' | 'currency';
   imageUrl: string;
   keywords: string[];
+  categories?: string[];
   relatedStockSymbols: string[];
   sentiment: Sentiment;
+};
+
+/** 서버 뉴스맵 선정 상태. 점수나 유료 정보는 담지 않는다. */
+export type NewsMapSelection = {
+  status: 'complete' | 'insufficient' | 'partial' | 'expandable';
+  reason: string | null;
+  requested: number;
+  returned: number;
 };
 
 export type IssueCluster = {
@@ -22,6 +31,7 @@ export type IssueCluster = {
   relatedNewsIds: string[];
   recommendedKeywords: string[];
   reportId: string;
+  mapSelection?: NewsMapSelection;
 };
 
 export type Report = {

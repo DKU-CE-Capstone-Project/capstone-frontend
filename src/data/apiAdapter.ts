@@ -11,6 +11,7 @@ import {
   reports as staticReports,
   type IssueCluster,
   type NewsCard,
+  type NewsMapSelection,
   type Report,
 } from './mockData';
 
@@ -47,10 +48,12 @@ type ApiNewsCard = {
   title: string;
   summary: string;
   thumbnail_url: string;
-  source_name: string;
-  published_at: string;
-  related_stock_names: string[];
+  source_name?: string;
+  published_at?: string;
+  related_stock_names?: string[];
   source_url?: string;
+  keywords?: string[];
+  categories?: string[];
 };
 
 type ApiSearchResponse = {
@@ -75,38 +78,18 @@ type ApiSourceResponse = {
   original_body?: string;
   description?: string;
   thumbnail_url?: string;
+  keywords?: string[];
+  categories?: string[];
 };
 
-type ApiGraphNode = {
-  news_id: string;
-  title: string;
-  summary: string;
-  distance: number;
-  is_center?: boolean;
-};
-
-type ApiGraphResponse = {
-  center_node: ApiGraphNode;
-  nodes: ApiGraphNode[];
-  edges: Array<{
-    source: string;
-    target: string;
-    relation_type: string;
-    distance: number;
-  }>;
-};
-
-type ApiRelatedNewsItem = {
-  news_id: string;
-  title: string;
-  summary: string;
-  thumbnail_url: string;
+type ApiRelatedNewsItem = ApiNewsCard & {
   relevance_score?: number | null;
   distance: number;
 };
 
 type ApiRelatedResponse = {
   related_news: ApiRelatedNewsItem[];
+  selection?: NewsMapSelection | null;
 };
 
 type ApiReportCreateResponse = {
@@ -278,81 +261,88 @@ export async function fetchAndCacheNewsCluster(term: string): Promise<IssueClust
 }
 
 /**
- * 중심 뉴스의 "이웃"을 그래프 API 로 가져와 클러스터를 다시 구성한다.
- *
- * `/news/search` 결과는 검색어에 걸린 기사라 서로 연관이 없을 수 있다.
- * 뉴스맵이 보여줘야 하는 건 "이 기사와 이어진 기사"이므로 related/graph 를 쓴다.
- *
- * related 를 먼저 쓰고 모자라면 graph 의 이웃으로 채운다. 둘 다 distance 를
- * 주므로 가까운 것부터 앞에 둔다 — 맵은 상한을 넘는 노드를 잘라내므로
- * 순서가 곧 우선순위다.
- *
- * limit 기본값은 맵이 그릴 수 있는 연관 노드 수(MAX_RELATED_NODES)와 맞춰 둔 값이다.
- * 레이아웃 모듈을 데이터 어댑터가 import 하지 않도록 호출부에서 넘긴다.
+ * /related가 선정한 순서와 FREE 상한을 그대로 유지한다.
+ * 검색 후보·다른 API로 부족한 수를 보충하지 않는다. 새 중심을 평가하는 동안과
+ * 실패 시에는 이전 중심의 연관 목록을 비운다. 같은 중심의 확장 요청(keep)은
+ * 응답이 올 때까지 이미 받은 결과를 유지한다. 늦게 도착한 이전 요청은 버린다.
  */
+const newsMapRequests = new Map<string, number>();
+
+export type NewsMapOptions = {
+  /** false면 서버가 최초 후보만 평가하고, 더 찾을 수 있으면 status=expandable을 준다. */
+  expand?: boolean;
+  /** 같은 중심의 결과를 확장하는 요청이면 기존 결과를 지우지 않는다. */
+  keep?: boolean;
+};
+
 export async function fetchAndCacheNewsMap(
   newsId: string,
   currentClusterId: string,
   limit = 6,
+  { expand = true, keep = false }: NewsMapOptions = {},
 ): Promise<IssueCluster> {
   const currentCluster = resolveCluster(currentClusterId);
-  const [graphData, relatedData] = await Promise.all([
-    apiGet<ApiGraphResponse>(
-      `/news/${encodeURIComponent(newsId)}/graph?depth=2&limit=${limit * 2}&include_distance=true`,
-    ),
-    apiGet<ApiRelatedResponse>(
-      `/news/${encodeURIComponent(newsId)}/related?limit=${limit}&tier=FREE`,
-    ),
-  ]);
-
-  cacheNewsCard(graphNodeToNewsCard(graphData.center_node, currentCluster.query, 0));
+  const request = (newsMapRequests.get(currentClusterId) ?? 0) + 1;
+  newsMapRequests.set(currentClusterId, request);
+  if (!keep || currentCluster.mainNewsId !== newsId) {
+    dynClusters.set(currentClusterId, {
+      ...currentCluster, mainNewsId: newsId, relatedNewsIds: [], mapSelection: undefined,
+    });
+  }
+  const params = new URLSearchParams({ limit: String(limit), tier: 'FREE', expand: String(expand) });
+  const relatedData = await apiGet<ApiRelatedResponse>(
+    `/news/${encodeURIComponent(newsId)}/related?${params}`,
+  );
+  if (newsMapRequests.get(currentClusterId) !== request) return resolveCluster(currentClusterId);
 
   const relatedIds: string[] = [];
-
-  [...relatedData.related_news]
-    .sort((a, b) => a.distance - b.distance)
+  relatedData.related_news
     .slice(0, limit)
     .forEach((item, index) => {
-      const card = relatedItemToNewsCard(item, currentCluster.query, index + 1);
-      cacheNewsCard(card);
+      const card = apiCardToNewsCard(item, currentCluster.query, index + 1);
+      dynNews.set(card.id, card);
       relatedIds.push(card.id);
     });
 
-  if (relatedIds.length < limit) {
-    const neighbours = graphData.nodes
-      .filter((node) => node.news_id !== newsId && !relatedIds.includes(node.news_id))
-      .sort((a, b) => a.distance - b.distance);
-
-    for (const node of neighbours) {
-      const card = graphNodeToNewsCard(node, currentCluster.query, relatedIds.length + 1);
-      cacheNewsCard(card);
-      relatedIds.push(card.id);
-      if (relatedIds.length >= limit) break;
-    }
-  }
-
   const nextCluster: IssueCluster = {
-    ...currentCluster,
+    ...resolveCluster(currentClusterId),
     id: currentClusterId,
     mainNewsId: newsId,
     relatedNewsIds: relatedIds,
+    mapSelection: relatedData.selection ?? undefined,
   };
   dynClusters.set(currentClusterId, nextCluster);
   return nextCluster;
 }
 
+/**
+ * 확장 요청이 실패하면 이미 표시한 최초 결과를 유지하되, 화면 상태를
+ * '부분 결과'로 맞춘다. 같은 중심의 최신 요청이 아니면 아무것도 바꾸지 않는다.
+ */
+export function markNewsMapPartial(newsId: string, clusterId: string, reason: string): IssueCluster {
+  const cluster = resolveCluster(clusterId);
+  if (cluster.mainNewsId !== newsId || cluster.mapSelection?.status !== 'expandable') return cluster;
+  const next: IssueCluster = { ...cluster, mapSelection: { ...cluster.mapSelection, status: 'partial', reason } };
+  dynClusters.set(clusterId, next);
+  return next;
+}
+
 export async function fetchAndCacheNewsSource(newsId: string): Promise<NewsCard> {
   const source = await apiGet<ApiSourceResponse>(`/news/${encodeURIComponent(newsId)}/source`);
-  const existing = resolveNews(newsId);
-  const updated: NewsCard = {
-    ...existing,
-    title: source.original_title || existing.title,
-    source: source.source_name || existing.source,
-    publishedAt: formatDate(source.published_at) || existing.publishedAt,
-    mockOriginalBody: source.original_body ?? '',
-    imageUrl: source.thumbnail_url || existing.imageUrl,
-    sourceUrl: source.source_url || existing.sourceUrl,
-  };
+  const existing = findKnownNews(newsId);
+  const updated = apiCardToNewsCard({
+    news_id: newsId,
+    title: source.original_title,
+    description: source.description,
+    summary: existing?.summary ?? '',
+    source_name: source.source_name,
+    published_at: source.published_at,
+    source_url: source.source_url,
+    thumbnail_url: source.thumbnail_url ?? '',
+    keywords: source.keywords,
+    categories: source.categories,
+  }, '', 0);
+  updated.mockOriginalBody = source.original_body ?? existing?.mockOriginalBody ?? '';
   dynNews.set(newsId, updated);
   return updated;
 }
@@ -420,14 +410,14 @@ function cacheSearchAsCluster({
   const keywords = unique([
     query,
     ...recommendedKeywords,
-    ...cards.flatMap((card) => card.related_stock_names),
+    ...cards.flatMap((card) => card.related_stock_names ?? []),
   ]).slice(0, 11);
 
   const cluster: IssueCluster = {
     id: clusterId,
     query,
     mainNewsId: newsIds[0] ?? '',
-    relatedNewsIds: newsIds.slice(1),
+    relatedNewsIds: [],
     recommendedKeywords: keywords.length > 0 ? keywords : staticClusters[0].recommendedKeywords,
     reportId: `${clusterId}-report-placeholder`,
   };
@@ -551,78 +541,24 @@ function hasBackendFallbackText(
 }
 
 function apiCardToNewsCard(card: ApiNewsCard, query: string, index: number): NewsCard {
+  const existing = findKnownNews(card.news_id);
+  const stocks = card.related_stock_names ?? existing?.relatedStockSymbols ?? [];
   return {
     id: card.news_id,
     title: card.title,
-    source: card.source_name,
-    publishedAt: formatDate(card.published_at),
-    summary: card.description ?? card.summary,
-    mockOriginalBody: '',
-    sourceUrl: card.source_url,
-    thumbnailTone: pickTone(card.title, index),
-    imageUrl: card.thumbnail_url || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
-    keywords: unique([query, ...card.related_stock_names]).slice(0, 4),
-    relatedStockSymbols: card.related_stock_names,
-    sentiment: 'neutral',
-  };
-}
-
-function graphNodeToNewsCard(node: ApiGraphNode, query: string, index: number): NewsCard {
-  const existing = findKnownNews(node.news_id);
-  return {
-    id: node.news_id,
-    title: node.title,
-    // /graph 응답에는 출처가 없다. 캐시에 없으면 비워 둔다 — 'News API' 같은
-    // 문구를 넣으면 화면에서 진짜 언론사 이름처럼 보인다.
-    source: existing?.source ?? '',
-    publishedAt: existing?.publishedAt ?? '',
-    summary: node.summary,
+    source: card.source_name ?? existing?.source ?? '',
+    publishedAt: card.published_at !== undefined ? formatDate(card.published_at) : existing?.publishedAt ?? '',
+    summary: card.description || card.summary,
     mockOriginalBody: existing?.mockOriginalBody ?? '',
-    sourceUrl: existing?.sourceUrl,
-    thumbnailTone: existing?.thumbnailTone ?? pickTone(node.title, index),
-    imageUrl: existing?.imageUrl ?? FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
-    keywords: existing?.keywords ?? unique([query, ...node.title.split(/\s+/)]).slice(0, 4),
-    relatedStockSymbols: existing?.relatedStockSymbols ?? [],
+    sourceUrl: card.source_url ?? existing?.sourceUrl,
+    thumbnailTone: existing?.thumbnailTone ?? pickTone(card.title, index),
+    imageUrl: card.thumbnail_url || existing?.imageUrl || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
+    // Missing fields support older servers; explicit empty arrays clear stale tags.
+    keywords: card.keywords ?? existing?.keywords ?? unique([query, ...stocks]).filter(Boolean).slice(0, 4),
+    categories: card.categories ?? existing?.categories ?? [],
+    relatedStockSymbols: stocks,
     sentiment: existing?.sentiment ?? 'neutral',
   };
-}
-
-function relatedItemToNewsCard(item: ApiRelatedNewsItem, query: string, index: number): NewsCard {
-  const existing = findKnownNews(item.news_id);
-  return {
-    id: item.news_id,
-    title: item.title,
-    // /related 응답에도 출처가 없다. 위와 같은 이유로 비워 둔다.
-    source: existing?.source ?? '',
-    publishedAt: existing?.publishedAt ?? '',
-    summary: item.summary,
-    mockOriginalBody: existing?.mockOriginalBody ?? '',
-    sourceUrl: existing?.sourceUrl,
-    thumbnailTone: existing?.thumbnailTone ?? pickTone(item.title, index),
-    imageUrl: item.thumbnail_url || existing?.imageUrl || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length],
-    keywords: existing?.keywords ?? unique([query, ...item.title.split(/\s+/)]).slice(0, 4),
-    relatedStockSymbols: existing?.relatedStockSymbols ?? [],
-    sentiment: existing?.sentiment ?? 'neutral',
-  };
-}
-
-function mergeNewsCard(existing: NewsCard, next: NewsCard): NewsCard {
-  return {
-    ...existing,
-    ...next,
-    source: next.source || existing.source,
-    publishedAt: next.publishedAt || existing.publishedAt,
-    mockOriginalBody: next.mockOriginalBody || existing.mockOriginalBody,
-    imageUrl: next.imageUrl || existing.imageUrl,
-    keywords: next.keywords.length > 0 ? next.keywords : existing.keywords,
-    relatedStockSymbols:
-      next.relatedStockSymbols.length > 0 ? next.relatedStockSymbols : existing.relatedStockSymbols,
-  };
-}
-
-function cacheNewsCard(next: NewsCard): void {
-  const existing = findKnownNews(next.id);
-  dynNews.set(next.id, existing ? mergeNewsCard(existing, next) : next);
 }
 
 /**
