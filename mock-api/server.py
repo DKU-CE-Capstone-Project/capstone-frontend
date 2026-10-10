@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -346,91 +345,6 @@ def build_report(report_id: str, req: dict) -> dict:
     }
 
 
-# ── 선택 기사 리포트 (docs/10 § 3.5·3.6) ──────────────────────────────────
-# POST /reports {news_ids} 는 202 를 주고, GET 은 경과 시간으로 단계를 흉내 낸다
-# (본문 추출 → 분석 → 전략 → 완료, 단계당 SELECTION_STEP_SECONDS).
-SELECTION_STEP_SECONDS = float(os.environ.get("MOCK_REPORT_STEP_SECONDS", "0.8"))
-SELECTION_JOBS: dict[str, dict] = {}
-SELECTION_INDEX: dict[str, str] = {}
-DIRECTIONS = ["up", "mixed", "down"]
-ACTIONS = {"up": "buy", "mixed": "watch", "down": "hold"}
-
-
-def build_selection_report(report_id: str, news_ids: list[str]) -> dict:
-    items = [NEWS_BY_ID[i] for i in news_ids]
-    lead = items[0]
-    stocks = list(dict.fromkeys(s for item in items for s in item["stocks"]))[:4]
-    topics = list(dict.fromkeys(t for item in items for t in item["topics"]))
-    return {
-        "report_id": report_id,
-        "title": lead["title"] if len(items) == 1 else f"{', '.join(topics[:2])} 관련 뉴스 {len(items)}건 리포트",
-        "summary": lead["summary"],
-        "event_analysis": " ".join(item["summary"] for item in items),
-        "market_impact": (
-            f"{', '.join(topics[:3])} 관련 수급이 단기적으로 몰리는 구간이다. "
-            "비용 변수는 아직 해소되지 않아 종목별 실적 확인이 먼저 필요하다."
-        ),
-        "related_stocks": stocks,
-        "evidence_news": [
-            {"news_id": n["news_id"], "title": n["title"], "source_name": n["source_name"],
-             "source_url": _source_url(n), "published_at": _at(n["offset"]),
-             "body_status": "extracted" if i < 3 else "description_only"}
-            for i, n in enumerate(items)
-        ],
-        "stock_impacts": [
-            {"name": name, "ticker": "", "direction": DIRECTIONS[i % 3], "action": ACTIONS[DIRECTIONS[i % 3]],
-             "comment": f"{name}: 근거 뉴스 {len(items)}건 기준 영향 해석(mock)."}
-            for i, name in enumerate(stocks)
-        ],
-        "strategy": {
-            "stance": "분할 관심",
-            "rationale": "이벤트 민감 종목과 실적 확인 종목을 나눠 단계적으로 접근한다.",
-            "watchlist": stocks[:2],
-            "risk_warning": "기대가 먼저 반영된 구간에서는 실적 발표 전후 변동성을 확인한다.",
-        },
-        "risk_factors": ["수주의 매출 확정 시점", "환율 변동에 따른 원가 부담", "테마성 수급 되돌림"],
-        "rag_sources": [],
-        "verification": None,
-        "is_fallback": False,
-        "error": None,
-        "requested_news_ids": news_ids,
-        "created_at": _at(200),
-        "updated_at": _at(200),
-    }
-
-
-def selection_state(report_id: str) -> dict | None:
-    job = SELECTION_JOBS.get(report_id)
-    if not job:
-        return None
-    step = int((time.monotonic() - job["started"]) / SELECTION_STEP_SECONDS) if SELECTION_STEP_SECONDS else 4
-    if step >= 3:
-        return {**job["result"], "status": "completed", "stage": "done", "progress": None}
-    stage = ["extracting", "analyzing", "strategy"][step]
-    total = len(job["result"]["requested_news_ids"])
-    empty = {"title": "", "summary": "", "event_analysis": "", "market_impact": "", "related_stocks": [],
-             "evidence_news": [], "stock_impacts": [], "strategy": None, "risk_factors": []}
-    return {**job["result"], **empty, "status": "processing", "stage": stage,
-            "progress": {"done": total // 2, "total": total} if stage == "extracting" else None}
-
-
-def related_keywords(query: str, limit: int) -> dict:
-    hits = search(query, 20)
-    counts: dict[str, int] = {}
-    for item in hits:
-        for topic in dict.fromkeys(item["topics"]):
-            if topic.strip().lower() != query.strip().lower():
-                counts[topic] = counts.get(topic, 0) + 1
-    chosen = sorted((k for k, n in counts.items() if n >= 2), key=lambda k: -counts[k])[:limit]
-    keywords = [{"keyword": k, "article_count": counts[k], "source": "articles"} for k in chosen]
-    for keyword, _ in RECOMMENDED_KEYWORDS:
-        if len(keywords) >= limit:
-            break
-        if keyword not in chosen and keyword != query.strip():
-            keywords.append({"keyword": keyword, "article_count": 0, "source": "recommended"})
-    return {"query": query.strip(), "keywords": keywords, "article_total": len(hits)}
-
-
 def build_strategy(strategy_id: str, req: dict) -> dict:
     report = REPORTS.get(req.get("report_id", ""), {})
     stocks = report.get("related_stocks") or NEWS[0]["stocks"]
@@ -519,13 +433,6 @@ class Handler(BaseHTTPRequestHandler):
                 ]
             })
 
-        if path == "/api/v1/keywords/related":
-            q = qs.get("q", [""])[0]
-            limit = max(1, min(int(qs.get("limit", ["10"])[0]), 12))
-            if not q.strip():
-                return self._send(422, {"detail": "q is required"})
-            return self._send(200, related_keywords(q, limit))
-
         if path == "/api/v1/news/search":
             q = qs.get("q", [""])[0]
             size = max(1, min(int(qs.get("size", ["20"])[0]), 50))
@@ -612,33 +519,36 @@ class Handler(BaseHTTPRequestHandler):
             item = NEWS_BY_ID.get(m.group(1), NEWS[0])
             limit = int(qs.get("limit", ["10"])[0])
             tier = qs.get("tier", ["FREE"])[0]
-            exclude = {i for i in qs.get("exclude_ids", [""])[0].split(",") if i}
-            if len(exclude) > 100:
-                return self._send(422, {"detail": "exclude_ids는 최대 100개까지 보낼 수 있습니다."})
+            include_score = qs.get("include_score", ["false"])[0].lower() == "true"
 
-            # 실제 백엔드처럼 FREE/BASIC 은 3건, 점수는 PAID 만. exclude_ids 는 선정 전에 뺀다.
+            # 실제 백엔드는 FREE/BASIC 에서 limit 을 3 으로 깎고 relevance_score 를
+            # 주지 않는다. 그대로 흉내 내지 않으면 맵이 /related 만으로 다 차서,
+            # 프론트의 graph 이웃 보충 경로가 mock 에서 한 번도 실행되지 않는다.
             is_paid = tier == "PAID"
-            target = limit if is_paid else min(limit, 3)
-            pool = [n for n in NEWS if n is not item and set(n["topics"]) & set(item["topics"])]
-            excluded = sum(1 for n in pool if n["news_id"] in exclude)
-            neighbours = [n for n in pool if n["news_id"] not in exclude][:target]
+            effective_limit = limit if is_paid else min(limit, 3)
+            neighbours = [
+                n for n in NEWS if n is not item and set(n["topics"]) & set(item["topics"])
+            ][:effective_limit]
+
+            def score(i: int):
+                if not (is_paid or include_score):
+                    return None
+                return round(0.9 - 0.07 * i, 2) if is_paid else None
+
             return self._send(200, {
                 "related_news": [
-                    {**news_card(n), "relevance_score": round(0.9 - 0.07 * i, 2) if is_paid else None, "distance": 1}
+                    {
+                        "news_id": n["news_id"], "title": n["title"], "summary": n["summary"],
+                        "thumbnail_url": f"/api/v1/thumbnails/{n['tone']}-{n['news_id']}.svg",
+                        "relevance_score": score(i),
+                        "distance": 1,
+                    }
                     for i, n in enumerate(neighbours)
-                ],
-                "selection": {
-                    "status": "complete" if len(neighbours) >= target else "insufficient",
-                    "reason": None if len(neighbours) >= target else "exhausted",
-                    "requested": target, "returned": len(neighbours), "excluded": excluded,
-                },
+                ]
             })
 
         m = re.fullmatch(r"/api/v1/reports/([^/]+)", path)
         if m:
-            selection = selection_state(m.group(1))
-            if selection:
-                return self._send(200, selection)
             report = REPORTS.get(m.group(1))
             if not report:
                 return self._send(404, {"detail": "report not found"})
@@ -660,25 +570,6 @@ class Handler(BaseHTTPRequestHandler):
             req = json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:
             return self._send(400, {"detail": "invalid json"})
-
-        if path == "/api/v1/reports" and req.get("news_ids") is not None:
-            news_ids = list(dict.fromkeys(i for i in req["news_ids"] if i))
-            if not 1 <= len(news_ids) <= 5:
-                return self._send(422, {"detail": "news_ids는 1~5개여야 합니다."})
-            missing = [i for i in news_ids if i not in NEWS_BY_ID]
-            if missing:
-                return self._send(404, {"detail": f"news_id '{missing[0]}' not found."})
-            key = "|".join(sorted(news_ids))
-            existing = SELECTION_INDEX.get(key)
-            if existing:
-                state = selection_state(existing)
-                done = state and state["status"] == "completed"
-                return self._send(200 if done else 202, {
-                    "report_id": existing, "status": "completed" if done else "processing", "created_at": _at(200)})
-            report_id = f"rpt_{uuid.uuid4().hex[:12]}"
-            SELECTION_JOBS[report_id] = {"started": time.monotonic(), "result": build_selection_report(report_id, news_ids)}
-            SELECTION_INDEX[key] = report_id
-            return self._send(202, {"report_id": report_id, "status": "pending", "created_at": _at(200)})
 
         if path == "/api/v1/reports":
             report_id = f"rep-{uuid.uuid4().hex[:8]}"
