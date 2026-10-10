@@ -51,19 +51,12 @@ export type Report = {
     actionLabel?: string;
   }>;
   riskFactors: string[];
-  /** 전략 입장. 실제 API에서 AI 대체 결과면 null 이고 화면에서 숨긴다. */
   strategySummary: {
     stance: string;
     rationale: string;
     watchlist: string[];
     riskWarning: string;
-  } | null;
-  /** AI 생성 실패로 대체 문구를 쓴 결과 (실제 API) */
-  isFallback?: boolean;
-  /** 본문을 추출하지 못해 설명만 쓴 근거 수 (실제 API) */
-  descriptionOnlyCount?: number;
-  /** 요청 당시 근거 기사 ID (실제 API) */
-  requestedNewsIds?: string[];
+  };
 };
 
 export const newsCards: NewsCard[] = [
