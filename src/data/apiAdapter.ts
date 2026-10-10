@@ -649,7 +649,6 @@ export function errorMessage(error: unknown, fallback: string, retryHint?: strin
 // 여기서는 타입과 호출부만 둔다(마인드맵 알고리즘 적용은 2026-09-19 보류 결정).
 
 export type SessionState = {
-  session_id: string;
   mindmap: {
     center_news_id: string;
     expanded_news_ids: string[];
