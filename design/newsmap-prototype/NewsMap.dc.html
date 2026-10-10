@@ -39,16 +39,9 @@ a{color:var(--brand-fg)}a:hover{color:var(--brand-hover)}
 <path class="orbit" d="{{ringsD2}}" fill="none" stroke="var(--accent)" stroke-opacity="0.28" stroke-width="1.2" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim2}}"></path>
 <path class="orbit" d="{{ringsD1}}" fill="none" stroke="var(--accent)" stroke-opacity="0.5" stroke-width="1.4" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim1}}"></path>
 <path class="orbit" d="{{ringsD0}}" fill="none" stroke="var(--accent)" stroke-opacity="0.95" stroke-width="1.8" stroke-dasharray="6 10" vector-effect="non-scaling-stroke" style="animation: {{ringAnim0}}"></path>
-<path d="{{kwEdgesD}}" fill="none" stroke="var(--edge)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 6" vector-effect="non-scaling-stroke"></path>
 <path d="{{edgesD}}" fill="none" stroke="var(--edge)" stroke-width="2" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
 </svg>
 
-<sc-if value="{{showKeywords}}" hint-placeholder-val="{{true}}">
-<a href="KeywordMap.dc.html" class="kw" aria-label="원유 키워드맵 열기" style="position: absolute; left: -40px; top: -308px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">원유</a>
-<a href="KeywordMap.dc.html" class="kw" aria-label="중동 키워드맵 열기" style="position: absolute; left: 400px; top: -40px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">중동</a>
-<a href="KeywordMap.dc.html" class="kw" aria-label="해협 키워드맵 열기" style="position: absolute; left: -40px; top: 228px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">해협</a>
-<a href="KeywordMap.dc.html" class="kw" aria-label="에너지 키워드맵 열기" style="position: absolute; left: -480px; top: -40px; width: 80px; height: 80px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--bd); border-radius: 999px; background: var(--surface); color: var(--t2); font-size: 13px; font-weight: 700; text-align: center; text-decoration: none; box-shadow: var(--sh-sm)">에너지</a>
-</sc-if>
 
 <sc-for list="{{nodes}}" as="n" hint-placeholder-count="5">
 <div style="position: absolute; left: {{n.left}}; top: {{n.top}}; width: {{n.size}}; height: {{n.size}}; opacity: {{n.opacity}}; transition: opacity 300ms ease">
@@ -595,10 +588,6 @@ class Component extends DCLogic {
   }
 
   // ── 카드 트리 전체 크기로 확대·이동 범위를 정한다 ──
-  showsKeywords(t) {
-    return t.order.every(function (id) { var n = t.nodes[id]; return n.level === 0 || !n.expanded; });
-  }
-
   // 트리 전체(카드 + 중앙 키워드 궤도)를 감싸는 사각형과 가장 작은 카드 크기
   treeBounds(t) {
     var self = this;
@@ -609,10 +598,6 @@ class Component extends DCLogic {
       b.y0 = Math.min(b.y0, n.y - s / 2); b.y1 = Math.max(b.y1, n.y + s / 2);
       b.minSize = Math.min(b.minSize, s);
     });
-    if (this.showsKeywords(t)) {
-      b.x0 = Math.min(b.x0, -480); b.x1 = Math.max(b.x1, 480);
-      b.y0 = Math.min(b.y0, -308); b.y1 = Math.max(b.y1, 308);
-    }
     return b;
   }
 
@@ -714,7 +699,7 @@ class Component extends DCLogic {
     var evIndex = {};
     selIds.forEach(function (k, i) { evIndex[k] = i + 1; });
 
-    var showKeywords = t.order.every(function (id) { var n = t.nodes[id]; return n.level === 0 || !n.expanded; });
+
 
     // 궤도 진하기: 가운데 카드(자신)의 1궤도가 가장 진하고, 트리에서 멀어질수록 연해진다.
     // 단계 = (궤도 주인 카드와 가운데 카드 사이의 가지 거리) + (그 카드의 몇 번째 궤도인지)
@@ -736,7 +721,6 @@ class Component extends DCLogic {
       ringBuckets[b] += d;
     }
     addRing('root', 0, this.arc(0, 0, 300, 200));
-    if (showKeywords) addRing('root', 1, this.arc(0, 0, 440, 268));
     var edges = '';
     var nodes = [];
 
@@ -908,10 +892,6 @@ edges += 'M' + sx.toFixed(2) + ' ' + sy.toFixed(2) + ' L' + ex.toFixed(2) + ' ' 
       reportCam = 'translate(280px, 430px) scale(' + rz.toFixed(4) + ') translate(' + (-(rx0 + rx1) / 2).toFixed(2) + 'px, ' + (-(ry0 + ry1) / 2).toFixed(2) + 'px)';
     }
 
-    var kwEdges = '';
-    if (showKeywords) {
-      kwEdges = 'M0 -122 L0 -228 M122 0 L400 0 M0 122 L0 228 M-122 0 L-400 0';
-    }
 
     return {
       themeClass: dark ? 'dark' : '',
@@ -998,8 +978,6 @@ edges += 'M' + sx.toFixed(2) + ' ' + sy.toFixed(2) + ' L' + ex.toFixed(2) + ' ' 
       ringAnim0: ringAnim(0), ringAnim1: ringAnim(1), ringAnim2: ringAnim(2),
       ringAnim3: ringAnim(3), ringAnim4: ringAnim(4), ringAnim5: ringAnim(5),
       edgesD: edges || 'M0 0',
-      kwEdgesD: kwEdges || 'M0 0',
-      showKeywords: showKeywords,
       nodes: nodes
     };
   }
