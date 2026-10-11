@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/test-news-map.mjs",
+    "test": "node --test scripts/test-news-map.mjs scripts/test-news-map-v2.mjs",
     "dev": "vite",
+    "dev:live": "VITE_API_BASE=http://127.0.0.1:8026 VITE_NEWS_MAP_SOURCE=api vite --host 127.0.0.1 --port 5196 --strictPort",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview"
   },
