@@ -1,8 +1,12 @@
 # EconMind Frontend
 
-React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 2026-10-11 `origin/main` (`4f0bea6`)에서 시작한 로컬 `codex/newsmap-v2-20261011` 구현입니다. 새 뉴스맵 UI는 `origin/newsmap-prototype-mock`의 화면·트리 배치를 재사용하고, 탐색·선택·리포트를 정본 [API v2 설계](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/10-newsmap-prototype-api-design.md)에 연결했습니다. 원격 반영·배포 기록이 아닙니다.
+React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 2026-10-11 `origin/main` (`4f0bea6`)에서 시작한 로컬 `codex/newsmap-v2-20261011` 구현입니다. 새 뉴스맵 UI는 `origin/newsmap-prototype-mock`의 화면·트리 배치를 재사용하고, 탐색·선택·리포트를 정본 [API v2 설계](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/10-newsmap-prototype-api-design.md)에 연결했습니다. 이 문단은 구현 시작점이며 현재 운영 상태는 아래 배포 확인을 따릅니다.
 
 문서 동기화 때 확인한 범위는 기준 커밋 `e986b3f`와 당시 미커밋이던 `NewsMapExplorer.tsx` 변경입니다. 네 저장소의 구현·검증·보류 범위는 정본 `docs/14-newsmap-v2-implementation.md`에 정리했습니다. 문서 동기화에서 화면 로직을 추가 변경하지 않았습니다.
+
+## GCP 배포 확인 (2026-10-11)
+
+[PR #16](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/16)을 main `225c334`로 병합하고 [운영 서비스](https://econmind.duckdns.org)에 배포했다. 실제 브라우저에서 홈→키워드맵→국제유가 실뉴스 주변 4/4→FREE 1건 선택→리포트·전략 표시→새로고침 복원을 확인했다. 같은 API의 실제 생성·DB 저장도 검증했다. 운영은 서버 capability에 따른 무료 1건이며 홈 추천·키워드맵 mock과 주변 기사 부족 개선 보류를 유지한다. [배포·검증 근거](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/99-verification.md#2026-10-11-newsmap-v2-gcp-배포). 위 브랜치 설명과 아래 로컬 검증은 각각 작성 당시의 기록이다.
 
 ## 현재 연결
 
