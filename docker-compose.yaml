@@ -31,7 +31,7 @@ services:
       context: ./mock-api
     image: econmind-mock-api:dev
     environment:
-      PROTOTYPE_TIER: ${PROTOTYPE_TIER:-FREE}
+      PROTOTYPE_TIER: ${PROTOTYPE_TIER:-PAID}
       MOCK_API_HOST: 0.0.0.0  # 컨테이너 간 통신에는 모든 컨테이너 인터페이스에서 수신해야 한다
     ports:
       # 프론트를 npm run dev 로 돌리면서 이 mock 만 붙일 때 쓴다

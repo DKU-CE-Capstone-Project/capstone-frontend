@@ -15,6 +15,12 @@ import type {
   Selection,
 } from './newsMapService';
 import type { NewsCard } from './mockData';
+// Local prototype defaults to multi-selection; API capabilities remain server-owned.
+const fixtureTier: Session['prototype_tier'] =
+  (import.meta as ImportMeta & { env?: { VITE_NEWS_MAP_MOCK_TIER?: string } })
+    .env?.VITE_NEWS_MAP_MOCK_TIER === 'FREE'
+    ? 'FREE'
+    : 'PAID';
 const now = () => new Date().toISOString();
 const expiry = () => new Date(Date.now() + 24 * 3600_000).toISOString();
 let session: Session | null = null;
@@ -101,9 +107,9 @@ export async function mockV2Request(
       session_epoch: crypto.randomUUID(),
       resumed: false,
       expires_at: expiry(),
-      prototype_tier: 'FREE',
+      prototype_tier: fixtureTier,
       capabilities: {
-        max_report_articles: 1,
+        max_report_articles: fixtureTier === 'PAID' ? 10 : 1,
         initial_related_target: 4,
         branch_related_target: 3,
         max_map_nodes: 40,

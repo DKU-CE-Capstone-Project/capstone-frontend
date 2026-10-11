@@ -36,6 +36,8 @@ VITE_API_BASE=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173
 
 백엔드의 `scripts/run-newsmap-v2-local.py`로 실제 검색·선정 API를 8026 포트에 실행한 뒤 `npm run dev:live`로 5196 미리보기를 엽니다. 이 명령은 브라우저 mock을 끄고 실제 `/api/v2`에 연결합니다. 홈 추천·키워드맵은 설계대로 고정 mock을 유지하며 뉴스맵을 열 때 실제 검색을 시작합니다.
 
+현재 로컬 프로토타입은 PAID 기준으로 최대 10건을 추가·해제한다. 백엔드 로컬 실행 스크립트의 기본 티어가 PAID이며, 프론트는 실제 API 세션의 capability를 사용한다. 무료 선택 교체 동작은 백엔드를 `--tier FREE`로 실행해 검증한다.
+
 2026-10-11 실제 NAVER·OpenAI Decisions로 반도체 초기 주변 4건/하위 3건과 국제유가 초기 2건(부족 상태)/하위 3건을 확인했습니다. 브라우저에서 실제 제목·설명·NAVER 원문 링크와 확장 후 새로고침 복원을 검증했습니다. 이 탐색 프로파일은 규칙 메타데이터와 로컬 MongoDB·Redis를 사용하며 본문 추출·리포트·전략·Atlas RAG는 별도 검증 범위입니다. 외부 인증키는 백엔드에만 있습니다.
 
 실제 리포트는 백엔드를 `--with-reports`로 실행하고 같은 스크립트의 `--worker`를 별도 터미널에서 실행합니다. 2026-10-11 환율 기사 두 건을 각각 선택하여 실제 Diffbot 본문 추출·Gemini 리포트/critic/전략·MongoDB 저장·UI 표시를 확인했습니다(본문 6,081자 / 1,635자, 각각 coverage 1/1·실패 0건). 기존 전략 프롬프트가 리포트에 없는 종목을 추가하던 문제를 백엔드에서 수정했으며, UI도 리포트 근거 검증과 전략 제안을 구분해 표시합니다. 새로고침은 GET만으로 결과를 복원했습니다. 이 검증은 FREE 단일 기사 두 건의 소표본이고 Atlas RAG는 비활성화되어 있습니다.
@@ -47,11 +49,11 @@ VITE_API_BASE=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173
 외부 API·DB·실제 AI 생성 없이 응답·쿠키·새로고침·패널을 확인하는 합성 fixture입니다.
 
 ```bash
-PROTOTYPE_TIER=FREE python3 scripts/serve-v2-fixtures.py --port 9036
+python3 scripts/serve-v2-fixtures.py --port 9036
 VITE_API_BASE=http://127.0.0.1:9036 npm run dev -- --host 127.0.0.1 --port 5196
 ```
 
-PAID 검증은 fixture를 `PROTOTYPE_TIER=PAID`로 새 포트에서 실행합니다. `검증0`은 빈 맵, `검증부분`은 조회 제한/다중 기사 부분 본문 실패, `검증실패`는 모든 본문 실패, `검증전략실패`는 리포트 유지·전략 실패입니다. 합성 기사/본문/전략에는 fixture 표시가 있습니다. 상태는 서버 프로세스 메모리이며 서버 재시작에는 보존되지 않습니다. 실제 백엔드·Decision 선정 품질·DB 내구성 검증용이 아닙니다.
+HTTP fixture는 PAID(최대 10건)를 기본으로 하며 무료 검증은 `PROTOTYPE_TIER=FREE`로 실행합니다. `검증0`은 빈 맵, `검증부분`은 조회 제한/다중 기사 부분 본문 실패, `검증실패`는 모든 본문 실패, `검증전략실패`는 리포트 유지·전략 실패입니다. 합성 기사/본문/전략에는 fixture 표시가 있습니다. 상태는 서버 프로세스 메모리이며 서버 재시작에는 보존되지 않습니다. 실제 백엔드·Decision 선정 품질·DB 내구성 검증용이 아닙니다.
 
 브라우저 내부 fixture도 명시적으로 선택할 수 있습니다.
 
@@ -59,14 +61,14 @@ PAID 검증은 fixture를 `PROTOTYPE_TIER=PAID`로 새 포트에서 실행합니
 VITE_NEWS_MAP_SOURCE=mock npm run dev
 ```
 
-이 모드는 FREE의 메모리 fixture입니다. 페이지 새로고침 시 새 fixture 세션이 시작됩니다. 새로고침 복원 검증은 위 HTTP fixture 또는 실제 로컬 API에서 진행하세요. 기본/API 모드의 실패를 내부 fixture나 완성된 샘플 리포트로 대체하지 않습니다.
+이 모드는 PAID(최대 10건)의 메모리 fixture입니다. 무료 검증은 `VITE_NEWS_MAP_MOCK_TIER=FREE`를 함께 지정합니다. 페이지 새로고침 시 새 fixture 세션이 시작됩니다. 새로고침 복원 검증은 위 HTTP fixture 또는 실제 로컬 API에서 진행하세요. 기본/API 모드의 실패를 내부 fixture나 완성된 샘플 리포트로 대체하지 않습니다.
 
 ### Docker UI fixture
 
 ```bash
 docker compose up --build
 # http://localhost:8080
-PROTOTYPE_TIER=PAID docker compose up --build
+PROTOTYPE_TIER=FREE docker compose up --build  # 무료 1건 선택 동작 검증
 ```
 
 Compose 포트는 `127.0.0.1`로 제한합니다. mock 컨테이너는 `/api/v2` 합성 UI fixture를 실행합니다. 기존 `/api/v1` 전용 fixture는 `python3 mock-api/server.py`로 별도 실행할 수 있습니다. 실제 전체 스택은 `capstone-deploy`의 로컬 설정을 사용합니다.

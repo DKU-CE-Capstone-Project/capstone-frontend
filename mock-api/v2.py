@@ -1,5 +1,5 @@
 """Local browser UI fixture for docs/10; synthetic news/report, no DB or external API.
-Run: PROTOTYPE_TIER=FREE python3 scripts/serve-v2-fixtures.py --port 9036
+Run: python3 scripts/serve-v2-fixtures.py --port 9036 (PAID prototype by default)
 Use query 검증0, 검증부분, 검증실패, 검증전략실패 for explicit edge cases.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ REPORTS = {}
 STRATEGIES = {}
 KEYS = {}
 SEQ = 0
-TIER = os.environ.get('PROTOTYPE_TIER', 'FREE')
+TIER = os.environ.get('PROTOTYPE_TIER', 'PAID')
 
 def uid(): return str(uuid.uuid4())
 def now(): return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
