@@ -473,15 +473,8 @@ export function NewsMapExplorer({
         focus,
         t,
       );
-      const edge =
-        z2 >= lim.max - 1e-6
-          ? ' · 최대 확대'
-          : z2 <= lim.min + 1e-6
-            ? ' · 트리 전체 보기'
-            : '';
       setCamera({ focus: s.camera.focus, uz: z2 / base, pan: next });
       setWheeling(true);
-      setStatus(`확대 ×${Math.round(z2 * 100) / 100}${edge}`);
       clearTimeout(wheelTimer.current);
       wheelTimer.current = setTimeout(() => setWheeling(false), 160);
     };
