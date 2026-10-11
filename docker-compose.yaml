@@ -2,7 +2,7 @@
 # capstone-deploy 저장소의 compose 를 쓸 것.
 #
 #   docker compose up --build          → http://localhost:8080  (mock API 포함)
-#   docker compose up --build frontend → 프론트만. /api/* 는 502, 화면은 로컬 fallback
+#   docker compose up --build frontend → 프론트만. /api/v2/* 는 502, 오류를 화면에 표시
 #
 # mock API 는 서비스명을 econmind-api 로 맞춰 뒀다. 프론트 이미지의 기본값
 # BACKEND_ORIGIN=econmind-api:8000 이 그대로 맞아떨어지므로 추가 설정이 필요 없다.
@@ -24,13 +24,14 @@ services:
       - "host.docker.internal:host-gateway"
     mem_limit: 128m
 
-  # 프론트 UI 작업용 더미 API. capstone-backend 의 /api/v1 스키마를 흉내 낸다.
+  # 프론트 UI 작업용 더미 API. docs/10 의 /api/v2 UI fixture를 실행한다. 실제 DB·모델은 호출하지 않는다.
   # 실제 백엔드 동작을 검증하려면 이걸 쓰지 말고 capstone-deploy 의 compose 를 쓸 것.
   econmind-api:
     build:
       context: ./mock-api
     image: econmind-mock-api:dev
     environment:
+      PROTOTYPE_TIER: ${PROTOTYPE_TIER:-FREE}
       MOCK_API_HOST: 0.0.0.0  # 컨테이너 간 통신에는 모든 컨테이너 인터페이스에서 수신해야 한다
     ports:
       # 프론트를 npm run dev 로 돌리면서 이 mock 만 붙일 때 쓴다

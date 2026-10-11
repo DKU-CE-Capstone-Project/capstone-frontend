@@ -21,3 +21,7 @@ npm-debug.log*
 
 # Claude Code 로컬 설정
 .claude/
+
+# Python local fixture caches
+__pycache__/
+*.pyc

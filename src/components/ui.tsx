@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, ImageOff, Moon, Sun, X } from 'lucide-react';
+import { AlertTriangle, ImageOff, Lock, Moon, Sun, X } from 'lucide-react';
 import {
   easeOut,
   overlayVariants,
@@ -10,7 +10,13 @@ import {
 } from '../motion/presets';
 
 // ── 테마 토글 ───────────────────────────────────────────────────────
-export function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: () => void }) {
+export function ThemeToggle({
+  isDark,
+  onToggle,
+}: {
+  isDark: boolean;
+  onToggle: () => void;
+}) {
   return (
     <motion.button
       type="button"
@@ -31,7 +37,11 @@ export function ThemeToggle({ isDark, onToggle }: { isDark: boolean; onToggle: (
           transition={easeOut}
           style={{ display: 'flex' }}
         >
-          {isDark ? <Moon size={18} aria-hidden="true" /> : <Sun size={18} aria-hidden="true" />}
+          {isDark ? (
+            <Moon size={18} aria-hidden="true" />
+          ) : (
+            <Sun size={18} aria-hidden="true" />
+          )}
         </motion.span>
       </AnimatePresence>
     </motion.button>
@@ -95,7 +105,12 @@ export function MapSkeleton() {
             top: `${node.y}%`,
           }}
           animate={motionSafe ? { opacity: [0.35, 0.75, 0.35] } : undefined}
-          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut', delay: i * 0.12 }}
+          transition={{
+            duration: 1.6,
+            repeat: Infinity,
+            ease: 'easeInOut',
+            delay: i * 0.12,
+          }}
         />
       ))}
     </div>
@@ -107,7 +122,13 @@ export function MapSkeleton() {
  * 기존 errorMsg는 검색 결과 화면에만 렌더돼서, 홈·상세·리포트에서 발생한
  * 에러는 state에 저장만 되고 사용자에게 보이지 않았다. 이제 셸 레벨에서 띄운다.
  */
-export function Toast({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+export function Toast({
+  message,
+  onDismiss,
+}: {
+  message: string | null;
+  onDismiss: () => void;
+}) {
   useEffect(() => {
     if (!message) return;
     const timer = setTimeout(onDismiss, 6000);
@@ -162,7 +183,11 @@ export function SmartImage({
 
   if (!src || failed) {
     return (
-      <span className={`${className ?? ''} image-fallback`} role="img" aria-label={alt}>
+      <span
+        className={`${className ?? ''} image-fallback`}
+        role="img"
+        aria-label={alt}
+      >
         <ImageOff size={18} aria-hidden="true" />
       </span>
     );
@@ -191,5 +216,26 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
       <strong>{title}</strong>
       {hint && <p>{hint}</p>}
     </div>
+  );
+}
+
+/** 로그인·결제·연관도 상세·심화 분석은 이번 v2 범위 밖이다. */
+export function PremiumPreview({ maxArticles }: { maxArticles: number }) {
+  return (
+    <aside className="premium-preview" aria-label="현재 리포트 한도">
+      <div className="premium-header">
+        <Lock size={14} aria-hidden="true" />
+        <strong>리포트 근거 {maxArticles}건</strong>
+      </div>
+      <span>
+        {maxArticles === 1 ? '무료 · 선택 1건' : '프로토타입 유료 설정'}
+      </span>
+      <button type="button" disabled>
+        연관도 상세 · 준비 중
+      </button>
+      <button type="button" disabled>
+        심화 리포트 · 준비 중
+      </button>
+    </aside>
   );
 }
