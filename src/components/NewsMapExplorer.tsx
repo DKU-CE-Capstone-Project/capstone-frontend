@@ -16,7 +16,6 @@ import {
   ExternalLink,
   FileText,
   LineChart,
-  Newspaper,
   RotateCcw,
   X,
 } from 'lucide-react';
@@ -50,7 +49,7 @@ import {
   type Vec,
 } from '../layout/newsTree';
 import { useFieldSize } from '../layout/useFieldScale';
-import { PremiumPreview } from './ui';
+import { PremiumPreview, SmartImage } from './ui';
 
 /**
  * 03 뉴스맵 · 상세 · 레포트 — design/newsmap-prototype/NewsMap.dc.html을 옮긴 화면.
@@ -838,7 +837,14 @@ export function NewsMapExplorer({
                         style={{
                           background: `var(--tone-${n.news.thumbnailTone})`,
                         }}
-                      />
+                      >
+                        <SmartImage
+                          className="news-thumbnail-image"
+                          src={n.news.imageUrl}
+                          alt=""
+                          eager={isRoot}
+                        />
+                      </span>
                       <span className="map-card-copy">
                         <strong>
                           {isLoadingChild ? '다시 검색하는 중…' : n.news.title}
@@ -996,8 +1002,13 @@ export function NewsMapExplorer({
           className="detail-sheet-hero"
           style={{ background: `var(--tone-${shown.news.thumbnailTone})` }}
         >
+          <SmartImage
+            className="news-thumbnail-image detail-sheet-image"
+            src={shown.news.imageUrl}
+            alt=""
+            eager
+          />
           <div className="detail-sheet-shade" />
-          <Newspaper size={40} aria-hidden="true" />
           <button
             type="button"
             className="sheet-close on-image"
@@ -1094,7 +1105,13 @@ export function NewsMapExplorer({
                 <span
                   className="evidence-thumb"
                   style={{ background: `var(--tone-${n.news.thumbnailTone})` }}
-                />
+                >
+                  <SmartImage
+                    className="news-thumbnail-image"
+                    src={n.news.imageUrl}
+                    alt=""
+                  />
+                </span>
                 <span className="evidence-copy">
                   <strong>{n.news.title}</strong>
                   <small>

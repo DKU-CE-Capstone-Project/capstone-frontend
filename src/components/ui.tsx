@@ -185,8 +185,9 @@ export function SmartImage({
     return (
       <span
         className={`${className ?? ''} image-fallback`}
-        role="img"
-        aria-label={alt}
+        role={alt ? 'img' : undefined}
+        aria-label={alt || undefined}
+        aria-hidden={alt ? undefined : true}
       >
         <ImageOff size={18} aria-hidden="true" />
       </span>
@@ -200,6 +201,7 @@ export function SmartImage({
       alt={alt}
       loading={eager ? 'eager' : 'lazy'}
       decoding="async"
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       onLoad={() => setLoaded(true)}
       initial={false}

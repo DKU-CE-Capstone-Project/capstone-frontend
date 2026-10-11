@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { after, beforeEach, test } from 'node:test';
 import { build } from 'esbuild';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 const dir = await mkdtemp(join(tmpdir(), 'econmind-v2-'));
 await build({
@@ -18,6 +20,17 @@ await build({
 });
 const api = await import(pathToFileURL(join(dir, 'data/newsMapService.js')));
 const tree = await import(pathToFileURL(join(dir, 'layout/newsTree.js')));
+const viewDir = await mkdtemp(join(process.cwd(), 'node_modules', '.econmind-v2-view-'));
+await build({
+  entryPoints: ['src/components/NewsMapExplorer.tsx'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  outdir: viewDir,
+  external: ['react', 'react/jsx-runtime', 'react-dom', 'lucide-react', 'motion/react'],
+  define: { 'import.meta.env': '{}' },
+});
+const { NewsMapExplorer } = await import(pathToFileURL(join(viewDir, 'NewsMapExplorer.js')));
 const originalFetch = globalThis.fetch;
 let store;
 let calls;
@@ -191,6 +204,24 @@ after(async () => {
   globalThis.fetch = originalFetch;
   delete globalThis.sessionStorage;
   await rm(dir, { recursive: true, force: true });
+  await rm(viewDir, { recursive: true, force: true });
+});
+
+test('API thumbnails reach news-map card and detail images without substituting unrelated photos', () => {
+  const m = map();
+  const rootImage = 'https://publisher.test/root-photo.jpg';
+  const childImage = 'https://publisher.test/child-photo.jpg';
+  m.nodes[0].news.thumbnail_url = rootImage;
+  m.nodes[1].news.thumbnail_url = childImage;
+  const html = renderToStaticMarkup(createElement(NewsMapExplorer, {
+    map: api.mapFromApi(m, session),
+    onExpired() {},
+    onMap() {},
+    onChrome() {},
+  }));
+  const images = [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(images, [rootImage, childImage, rootImage]);
+  assert.doesNotMatch(html, /images\.unsplash\.com/);
 });
 
 test('v2 requests include cookies, omit JS session secrets, and preserve server MMR order', async () => {
