@@ -221,6 +221,9 @@ test('API thumbnails reach news-map card and detail images without substituting 
   }));
   const images = [...html.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(images, [rootImage, childImage, rootImage]);
+  // Cached images can complete before React attaches onLoad. Their visibility
+  // must not depend on another load event after map/report restoration.
+  assert.doesNotMatch(html, /<img\b[^>]*style="[^"]*opacity:\s*0(?:;|")/);
   assert.doesNotMatch(html, /images\.unsplash\.com/);
 });
 

@@ -1292,7 +1292,7 @@ export function NewsMapExplorer({
                   </p>
                 ))}
                 <h3>
-                  검증 상태:{' '}
+                  리포트 근거 검증:{' '}
                   {
                     {
                       passed: '통과',
@@ -1321,6 +1321,7 @@ export function NewsMapExplorer({
                     전략 결과가 없습니다. 리포트는 유지됩니다.
                   </p>
                 )}
+                {report.strategyItems.length > 0 && <h3>전략 제안</h3>}
                 {report.strategyItems.map((item, i) => (
                   <p key={i}>
                     {item.stock_name}

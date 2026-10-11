@@ -162,24 +162,24 @@ export function Toast({
  * 백엔드 thumbnail_url이 404이거나 외부 이미지 호스트가 막히면 기존에는
  * 깨진 이미지 아이콘이 그대로 노출됐다. 로드 실패 시 톤 배경으로 대체한다.
  */
-export function SmartImage({
-  src,
-  alt,
-  className,
-  eager = false,
-}: {
+type SmartImageProps = {
   src: string;
   alt: string;
   className?: string;
   eager?: boolean;
-}) {
-  const [failed, setFailed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+};
 
-  useEffect(() => {
-    setFailed(false);
-    setLoaded(false);
-  }, [src]);
+export function SmartImage(props: SmartImageProps) {
+  return <ImageForSource key={props.src} {...props} />;
+}
+
+function ImageForSource({
+  src,
+  alt,
+  className,
+  eager = false,
+}: SmartImageProps) {
+  const [failed, setFailed] = useState(false);
 
   if (!src || failed) {
     return (
@@ -195,7 +195,7 @@ export function SmartImage({
   }
 
   return (
-    <motion.img
+    <img
       className={className}
       src={src}
       alt={alt}
@@ -203,10 +203,6 @@ export function SmartImage({
       decoding="async"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      onLoad={() => setLoaded(true)}
-      initial={false}
-      animate={{ opacity: loaded ? 1 : 0 }}
-      transition={easeOut}
     />
   );
 }
