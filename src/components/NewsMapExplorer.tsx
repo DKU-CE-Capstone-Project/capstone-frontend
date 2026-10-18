@@ -49,6 +49,7 @@ import {
   type Vec,
 } from '../layout/newsTree';
 import { useFieldSize } from '../layout/useFieldScale';
+import { useLoadingStage } from './loadingStage';
 import { PremiumPreview, SmartImage } from './ui';
 
 /**
@@ -197,6 +198,13 @@ export function NewsMapExplorer({
       : 0;
   const report = server.report;
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  /** 펼치기·재검색(POST /branches) 대기 단계. 그 카드에만 표시하고 다른 카드는 그대로 조작한다. */
+  const branchStage = useLoadingStage(
+    loadingId,
+    loadingId && tree.nodes[loadingId]?.expanded
+      ? '다시 검색하는 중…'
+      : '하위 뉴스 검색 중…',
+  );
   const [status, setStatus] = useState(selectionMessage(map.initial_selection));
   const [spaceHeld, setSpaceHeld] = useState(false);
 
@@ -767,6 +775,7 @@ export function NewsMapExplorer({
             const isRoot = n.level === 0;
             const selected = sel.includes(id);
             const isLoadingChild = loadingId !== null && n.parent === loadingId;
+            const stage = id === loadingId ? branchStage : null;
             let isFocus = detailNode ? id === detailNode.id : id === focusId;
             // 초점 카드의 조상·형제·자손만 또렷하게, 나머지 가지는 흐리게
             const inPath =
@@ -823,6 +832,7 @@ export function NewsMapExplorer({
                       onClick={nodeClick(id)}
                       onKeyDown={nodeKeyDown(id)}
                       aria-pressed={selected}
+                      aria-busy={stage ? true : undefined}
                       aria-label={`${n.news.title} — 클릭 선택, 더블클릭 가운데로, Space를 누른 채 클릭(키보드는 Shift+Enter) 검색`}
                     >
                       <span
@@ -845,6 +855,19 @@ export function NewsMapExplorer({
                         <small>{isLoadingChild ? '' : n.news.source}</small>
                       </span>
                     </button>
+                    {stage && (
+                      <span
+                        className={`map-card-loading${stage.slow ? ' is-slow' : ''}`}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <span
+                          className="map-card-loading-dot"
+                          aria-hidden="true"
+                        />
+                        {stage.label}
+                      </span>
+                    )}
                     {selected && (
                       <span className="map-card-badge" aria-hidden="true">
                         {evNo ?? <Check size={16} strokeWidth={3} />}
