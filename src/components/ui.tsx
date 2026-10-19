@@ -53,7 +53,14 @@ export function ThemeToggle({
  * 기존에는 "🔍 뉴스 분석 중…" 박스 하나가 전부였다.
  * 어떤 단계가 진행 중인지 보여주고, 맵 화면에서는 스켈레톤으로 자리를 잡아준다.
  */
-export function LoadingOverlay({ label }: { label: string }) {
+export function LoadingOverlay({
+  label,
+  onCancel,
+}: {
+  label: string;
+  /** 있으면 취소 버튼을 보인다. 취소 뒤 늦게 온 응답은 호출한 쪽의 요청 토큰이 버린다. */
+  onCancel?: () => void;
+}) {
   const motionSafe = useMotionSafe();
 
   return (
@@ -75,6 +82,15 @@ export function LoadingOverlay({ label }: { label: string }) {
           />
         </span>
         <span className="loading-label">{label}</span>
+        {onCancel && (
+          <button
+            type="button"
+            className="loading-cancel"
+            onClick={onCancel}
+          >
+            취소
+          </button>
+        )}
       </div>
     </motion.div>
   );

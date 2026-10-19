@@ -34,6 +34,7 @@ import {
   type NewsMapChrome,
   type NewsMapExplorerHandle,
 } from './components/NewsMapExplorer';
+import { useLoadingStage } from './components/loadingStage';
 import {
   EmptyState,
   LoadingOverlay,
@@ -78,6 +79,9 @@ function App() {
   const [newsMapKey, setNewsMapKey] = useState(0);
   const [mapChrome, setMapChrome] = useState<NewsMapChrome>(INITIAL_CHROME);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
+  /** 뉴스맵 생성(POST /maps) 요청 토큰. Decision API 대기 동안 단계 문구를 바꾼다. */
+  const [mapLoadKey, setMapLoadKey] = useState<number | null>(null);
+  const mapStage = useLoadingStage(mapLoadKey);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [recommendedKeywords, setRecommendedKeywords] = useState(
     DEFAULT_HOME_KEYWORDS,
@@ -187,6 +191,7 @@ function App() {
   const openKeywordNewsMap = async (term: string) => {
     const current = ++request.current;
     setLoadingLabel('관련 뉴스를 모으는 중…');
+    setMapLoadKey(current);
     setErrorMsg(null);
     try {
       const next = await fetchNewsMap(term);
@@ -213,8 +218,18 @@ function App() {
         );
       }
     } finally {
-      if (current === request.current) setLoadingLabel(null);
+      if (current === request.current) {
+        setLoadingLabel(null);
+        setMapLoadKey(null);
+      }
     }
+  };
+
+  /** 뉴스맵 생성 대기 취소. 토큰만 올리면 늦게 온 맵은 위의 분기에서 지워지고 화면은 그대로다. */
+  const cancelNewsMap = () => {
+    ++request.current;
+    setLoadingLabel(null);
+    setMapLoadKey(null);
   };
 
   const onNewsMap = screen === 'newsMap' && newsMap !== null;
@@ -294,7 +309,12 @@ function App() {
         <Toast message={errorMsg} onDismiss={dismissError} />
 
         <AnimatePresence>
-          {loadingLabel && <LoadingOverlay label={loadingLabel} />}
+          {loadingLabel && (
+            <LoadingOverlay
+              label={mapStage?.label ?? loadingLabel}
+              onCancel={mapStage ? cancelNewsMap : undefined}
+            />
+          )}
         </AnimatePresence>
       </section>
     </main>

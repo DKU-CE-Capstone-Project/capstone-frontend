@@ -673,6 +673,50 @@ p {
   background: var(--brand-hover);
 }
 
+/* 펼치기·재검색 대기: 그 카드 위에만 단계 문구를 띄운다. 진행률은 알 수 없어 막대를 두지 않는다. */
+.map-card-loading {
+  position: absolute;
+  left: 50%;
+  top: -14px;
+  transform: translateX(-50%);
+  max-width: 220px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent-border);
+  box-shadow: var(--shadow-md);
+  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.map-card-loading.is-slow {
+  white-space: normal;
+  text-align: center;
+}
+
+.map-card-loading-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: loadingPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes loadingPulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
 /* ── 헤더 상태 · 선택 바 · 도움말 · 미니맵 ── */
 
 .map-status-pill {
@@ -1627,6 +1671,23 @@ p {
   border-top-color: var(--brand);
 }
 
+.loading-cancel {
+  min-height: 32px;
+  padding: 4px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.loading-cancel:hover {
+  color: var(--text-primary);
+  border-color: var(--brand);
+}
+
 .map-skeleton {
   position: absolute;
   inset: 0;
@@ -1782,6 +1843,11 @@ p {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* 깜박임 대신 고정 점으로 대기 중임만 보인다 */
+  .map-card-loading-dot {
+    animation: none !important;
   }
 }
 
