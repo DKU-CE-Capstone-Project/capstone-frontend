@@ -222,6 +222,11 @@ const API = `${(env.VITE_API_BASE ?? 'http://localhost:8000').replace(/\/$/, '')
 const REF_KEY = 'econmind.v2.navigation';
 export { ServiceError } from './serviceError';
 import { ServiceError } from './serviceError';
+function retryAfterSeconds(value: string | null): number | undefined {
+  if (!value || !/^(0|[1-9]\d*)$/.test(value.trim())) return undefined;
+  const seconds = Number(value.trim());
+  return Number.isSafeInteger(seconds) ? seconds : undefined;
+}
 export async function request<T>(
   method: string,
   path: string,
@@ -251,6 +256,9 @@ export async function request<T>(
       error?.message ?? `요청에 실패했습니다 (${response.status})`,
       response.status,
       error,
+      response.status === 429
+        ? retryAfterSeconds(response.headers.get('Retry-After'))
+        : undefined,
     );
   }
   return data as T;
@@ -750,6 +758,7 @@ export class NewsMapController {
     const pending =
       this.pending &&
       this.pending.body.map_id === map.map_id &&
+      this.pending.body.expected_revision === map.revision &&
       sameIds(this.pending.body.news_ids, ids)
         ? this.pending
         : {
