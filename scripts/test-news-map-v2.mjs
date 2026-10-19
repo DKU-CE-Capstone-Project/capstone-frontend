@@ -164,9 +164,10 @@ const report = (overrides = {}) => ({
   created_at: '2026-10-11T00:00:00Z',
   ...overrides,
 });
-const response = (data, status = 200) => ({
+const response = (data, status = 200, headers = {}) => ({
   ok: status < 400,
   status,
+  headers: new Headers(headers),
   json: async () => structuredClone(data),
 });
 function server(fn) {
@@ -253,6 +254,37 @@ test('v2 requests include cookies, omit JS session secrets, and preserve server 
     JSON.stringify([...store.values()]).includes('session_id'),
     false,
   );
+});
+test('429 during session lookup preserves Retry-After and does not start a map mutation', async () => {
+  server(() => response(
+    { error: { code: 'RATE_LIMIT_EXCEEDED', message: 'quota full', retryable: true, details: {} } },
+    429,
+    { 'Retry-After': '75' },
+  ));
+  await assert.rejects(api.fetchNewsMap('query'), (error) => {
+    assert.equal(error.status, 429);
+    assert.equal(error.retryAfterSeconds, 75);
+    assert.match(error.message, /요청 한도.*약 75초 후/);
+    return true;
+  });
+  assert.deepEqual(calls.map((call) => [call.method, call.path]), [['GET', '/session']]);
+});
+test('429 from map creation tells the user to wait without retrying the POST', async () => {
+  server((call) => call.path === '/session'
+    ? response(session)
+    : response(
+        { error: { code: 'RATE_LIMIT_EXCEEDED', message: 'quota full', retryable: true, details: {} } },
+        429,
+        { 'Retry-After': '31' },
+      ));
+  await assert.rejects(api.fetchNewsMap('query'), (error) => {
+    assert.equal(error.retryAfterSeconds, 31);
+    assert.match(error.message, /요청 한도.*약 31초 후/);
+    return true;
+  });
+  assert.deepEqual(calls.map((call) => [call.method, call.path]), [
+    ['GET', '/session'], ['POST', '/maps'],
+  ]);
 });
 test('home recommendations and keyword maps use the documented mock without server calls', async () => {
   server(() => assert.fail('home must not call live API'));
@@ -408,6 +440,20 @@ test('branch failures preserve valid displayed tree rather than hiding errors as
   assert.equal(c.state.map.nodes.length, 5);
   assert.equal(c.state.error, 'search failed');
 });
+test('429 from branch expansion keeps the tree, shows the wait, and never retries POST', async () => {
+  const c = controller(map());
+  server(() => response(
+    { error: { code: 'RATE_LIMIT_EXCEEDED', message: 'quota full', retryable: true, details: {} } },
+    429,
+    { 'Retry-After': '12' },
+  ));
+  await assert.rejects(c.branch('server-d', 'expand'), /약 12초 후/);
+  assert.equal(c.state.map.nodes.length, 5);
+  assert.match(c.state.error, /요청 한도.*약 12초 후/);
+  assert.deepEqual(calls.map((call) => [call.method, call.path]), [
+    ['POST', '/maps/map/branches'],
+  ]);
+});
 test('new report sends real selected IDs, idempotency UUID and updated revision, never adds center', async () => {
   let m = map({ selected_news_ids: ['d'] });
   const c = controller(m);
@@ -488,6 +534,31 @@ test('dependency retry after dispatch failure retains request key across user re
     posts[1].options.headers['Idempotency-Key'],
   );
   assert.deepEqual(posts[0].body, posts[1].body);
+});
+test('manual retry after a 429 uses the current map revision if the map changed', async () => {
+  const c = controller(map({ selected_news_ids: ['a'], report_panel_open: true }));
+  let posts = 0;
+  server((call) => {
+    if (call.method === 'PATCH')
+      return response({ ...c.state.map, ...call.body, revision: c.state.map.revision + 1 });
+    if (call.method === 'POST')
+      return ++posts === 1
+        ? response(
+            { error: { code: 'RATE_LIMIT_EXCEEDED', message: 'quota full', retryable: true, details: {} } },
+            429,
+            { 'Retry-After': '20' },
+          )
+        : response(job({ accepted_map_revision: 3 }), 202);
+    return new Promise(() => {});
+  });
+  await assert.rejects(c.openReport(), /약 20초 후/);
+  assert.equal(posts, 1);
+  await c.update({ detail_news_id: 'a' });
+  await c.retryReport();
+  const sent = calls.filter((call) => call.method === 'POST');
+  assert.deepEqual(sent.map((call) => call.body.expected_revision), [1, 2]);
+  assert.notEqual(sent[0].options.headers['Idempotency-Key'], sent[1].options.headers['Idempotency-Key']);
+  assert.equal(c.state.map.active_report_job_id, 'job');
 });
 test('refresh of running report polls existing job and publishes no duplicate POST', async () => {
   const c = controller(

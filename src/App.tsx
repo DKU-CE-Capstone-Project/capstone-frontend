@@ -207,7 +207,7 @@ function App() {
       if (current === request.current) {
         // 검색 결과 없음(404)은 그대로 알리고, 서버·네트워크 오류는 재시도를 안내한다.
         setErrorMsg(
-          error instanceof ServiceError && error.status === 404
+          error instanceof ServiceError && [404, 429].includes(error.status)
             ? error.message
             : '뉴스 검색에 실패했습니다. 잠시 후 다시 검색해 주세요.',
         );
