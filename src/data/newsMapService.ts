@@ -1,4 +1,4 @@
-/** Canonical docs/10 contract. Only home recommendations and keyword maps remain mocks. */
+/** Canonical docs/10 contract + grounded Zero-LLM keyword map (/api/v1/keywords/map). */
 import type { NewsCard, Report } from './mockData';
 import {
   MOCK_HOME_KEYWORDS,
@@ -8,7 +8,18 @@ import {
 } from './mockNewsMap';
 import { mockV2Request } from './mockV2';
 
-export type KeywordMapData = MockKeywordMap;
+export type KeywordMapNodeMeta = {
+  keyword: string;
+  kind: 'center' | 'issue' | 'entity';
+  search_query: string;
+  article_count: number;
+  center_news_id?: string | null;
+  news_ids?: string[];
+};
+export type KeywordMapData = MockKeywordMap & {
+  total_articles?: number;
+  nodes?: KeywordMapNodeMeta[];
+};
 export const DEFAULT_HOME_KEYWORDS = MOCK_HOME_KEYWORDS;
 export type ReportPhase = 0 | 1 | 2 | 3;
 export type ErrorDetail = {
@@ -218,7 +229,11 @@ const env =
     }
   ).env ?? {};
 export const USE_MOCK = env.VITE_NEWS_MAP_SOURCE === 'mock';
-const API = `${(env.VITE_API_BASE ?? 'http://localhost:8000').replace(/\/$/, '')}/api/v2`;
+const API_BASE = (env.VITE_API_BASE ?? 'http://localhost:8000').replace(
+  /\/$/,
+  '',
+);
+const API = `${API_BASE}/api/v2`;
 const REF_KEY = 'econmind.v2.navigation';
 export { ServiceError } from './serviceError';
 import { ServiceError } from './serviceError';
@@ -363,7 +378,40 @@ export function reportFromApi(
   };
 }
 export const fetchRecommendedKeywords = fetchMockRecommendedKeywords;
-export const fetchKeywordMap = fetchMockKeywordMap;
+export async function fetchKeywordMap(
+  query: string,
+  signal?: AbortSignal,
+): Promise<KeywordMapData> {
+  const trimmed = query.trim();
+  if (USE_MOCK) return fetchMockKeywordMap(trimmed);
+  if (!trimmed) {
+    throw new ServiceError('검색어를 입력해 주세요.', 422);
+  }
+  const response = await fetch(
+    `${API_BASE}/api/v1/keywords/map?q=${encodeURIComponent(trimmed)}`,
+    {
+      method: 'GET',
+      credentials: 'include',
+      signal,
+    },
+  );
+  const data = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    const detail =
+      typeof data?.detail === 'string'
+        ? data.detail
+        : (data?.error?.message as string | undefined);
+    throw new ServiceError(
+      detail ?? `연관 키워드 조회에 실패했습니다 (${response.status})`,
+      response.status,
+      data?.error as ErrorDetail | undefined,
+      response.status === 429
+        ? retryAfterSeconds(response.headers.get('Retry-After'))
+        : undefined,
+    );
+  }
+  return data as KeywordMapData;
+}
 export function reportTitle(
   _map: unknown,
   evidence: NewsCard[],

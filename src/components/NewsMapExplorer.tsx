@@ -85,8 +85,6 @@ export const NEWS_MAP_DEFAULT_STATUS =
 
 const DETAIL_WIDTH = 520;
 const REPORT_WIDTH = 720;
-/** 오른쪽 위 유료 프리뷰가 차지하는 폭. 카메라 중심을 그만큼 왼쪽으로 옮긴다. */
-const PREVIEW_GUTTER = 196;
 
 const RING_OPACITY = [0.95, 0.5, 0.28, 0.16, 0.1, 0.07];
 const RING_WIDTH = [1.8, 1.4, 1.2, 1.1, 1, 1];
@@ -128,11 +126,11 @@ function resolveCamera(tree: MapTree, camera: Camera, viewport: Viewport) {
   return { focus, lim, base, zoom, pan };
 }
 
-/** 프로토타입은 1280×832 데스크톱 전용이다. 1280×832에서 카메라 중심은 (542, 420)이다. */
-function geometry({ width: W, height: H }: Viewport) {
+/** 기본 카메라 중심은 뷰포트 정중앙(W / 2, H / 2)이며, 오른쪽 패널이 열릴 때만 남은 왼쪽 영역 중심으로 이동한다. */
+export function geometry({ width: W, height: H }: Viewport) {
   return {
-    cx: (W - PREVIEW_GUTTER) / 2,
-    cy: H / 2 + 4,
+    cx: W / 2,
+    cy: H / 2,
     /** 상세 패널이 열렸을 때 남는 왼쪽 영역의 가운데 */
     detailCx: (W - DETAIL_WIDTH) / 2,
     reportCx: (W - REPORT_WIDTH) / 2,

@@ -280,8 +280,9 @@ p {
 
 /* ══ 맵 공통 ═════════════════════════════════════════════════════════ */
 
+/* 상단 헤더(top 24 + 높이 38 = 62)와 하단 검색 스트립(bottom 104 + 높이 48 = 152)을 모두 피한다 */
 .results-view {
-  padding: 88px var(--space-8) 96px;
+  padding: 76px var(--space-8) 168px;
   display: flex;
 }
 
@@ -289,7 +290,7 @@ p {
   position: relative;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /**
@@ -327,9 +328,11 @@ p {
 
 .keyword-node {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
   align-items: center;
   justify-content: center;
-  padding: var(--space-3);
+  padding: var(--space-2) 10px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
   background: var(--node-bg);
@@ -338,12 +341,25 @@ p {
   line-height: var(--leading-tight);
   text-align: center;
   word-break: keep-all;
+  overflow-wrap: break-word;
   overflow: hidden;
   box-shadow: var(--shadow-node);
   transition: color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.keyword-node.is-issue {
+  border-color: var(--brand-border);
+  color: var(--text-primary);
+}
+
+.keyword-node-count {
+  font-size: 10px;
+  font-weight: var(--weight-medium, 500);
+  line-height: 1;
+  opacity: 0.72;
 }
 
 .keyword-node:hover {
@@ -361,10 +377,12 @@ p {
 }
 
 .keyword-node span {
+  max-width: 100%;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;
   -webkit-box-orient: vertical;
+  overflow-wrap: break-word;
   overflow: hidden;
 }
 
@@ -376,6 +394,7 @@ p {
  */
 .result-search-strip {
   position: absolute;
+  z-index: var(--z-header);
   left: 0;
   right: 0;
   bottom: 104px;
@@ -1825,7 +1844,7 @@ p {
   }
 
   .results-view {
-    padding: 84px var(--space-3) 96px;
+    padding: 72px var(--space-3) 164px;
   }
 
   .toast {

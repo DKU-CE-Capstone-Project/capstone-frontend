@@ -1,6 +1,21 @@
 # EconMind Frontend
 
-React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 2026-10-11 `origin/main` (`4f0bea6`)에서 시작한 로컬 `codex/newsmap-v2-20261011` 구현입니다. 새 뉴스맵 UI는 `origin/newsmap-prototype-mock`의 화면·트리 배치를 재사용하고, 탐색·선택·리포트를 정본 [API v2 설계](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/10-newsmap-prototype-api-design.md)에 연결했습니다. 이 문단은 구현 시작점이며 현재 운영 상태는 아래 배포 확인을 따릅니다.
+React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 프로젝트 문서 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)입니다.
+
+## 키워드맵 실데이터 연결 및 화면 정렬 개선 (2026-10-25)
+
+초기 키워드 맵(`02 키워드 맵`)을 백엔드 실시간 뉴스 추출 API에 연결하고, 키워드맵·뉴스맵 두 마인드맵 화면의 배치 및 정렬을 개선했습니다(`feat/keyword-map-gemini` → `main`).
+
+- **키워드맵 API 연결 (`src/data/newsMapService.ts`, `src/App.tsx`):** 기본/실제 API 모드에서 `fetchKeywordMap(query)`가 `GET /api/v1/keywords/map?q=...`를 호출하고 `KeywordMapNode`(`center` / `issue` / `entity`, `article_count`, `search_query`, `center_news_id`, `news_ids`)를 보존합니다. 주변 노드 클릭 시 표시 라벨 대신 서버가 구성한 복합 검색어(`node.search_query`)로 뉴스맵을 요청합니다. `VITE_NEWS_MAP_SOURCE=mock`은 오프라인 브라우저 fixture를 유지하며, 홈 추천 키워드는 설계대로 고정 목록을 유지합니다. HTTP UI fixture(`mock-api/v2.py`)에도 `/api/v1/keywords/map` 합성 응답을 추가했습니다.
+- **키워드맵 2궤도 배치 및 잘림·가림 수정 (`src/layout/mapLayout.ts`, `src/components/KeywordMap.tsx`, `src/styles.css`):** 서버 노드의 `kind === 'issue'`는 안쪽 1궤도(이슈가 4개 미만이어도 유지), `kind === 'entity'`는 바깥 2궤도에 배치합니다. 상단 `.result-search-strip`(`z-index: var(--z-header)`) 및 하단 내비게이션과 노드가 겹치지 않도록 `.results-view` 상·하단 여백(`76px` / `168px`, 모바일 `72px` / `164px`)과 `.orbit-field` `overflow: visible`을 적용하고, 긴 한국어 구문이 원 밖으로 잘리지 않도록 궤도·노드 크기 비율, 글자 수 기반 동적 폰트 축소(`adjustedKeywordFont`), `overflow-wrap: break-word`, 전체 구문 툴팁(`title`)을 반영했습니다.
+- **뉴스 기사 마인드맵 정중앙 정렬 (`src/components/NewsMapExplorer.tsx`):** 기존 우측 프리뷰 폭 오프셋(`PREVIEW_GUTTER = 196` → `1280×832` 기준 `(542, 420)`)을 제거하고 기본 카메라 원점을 뷰포트 정중앙 `(W / 2, H / 2)`(`(640, 416)`)으로 정렬했습니다. 오른쪽 상세 시트(`detailCx = (W - 520) / 2`)나 리포트 시트(`reportCx = (W - 720) / 2`)가 열릴 때 남은 좌측 영역 가운데로 이동하는 동작과 휠 확대·미니맵 뷰포트 계산은 그대로 유지합니다.
+- **로컬 검증:** `npm test` **67 passed, 0 failed**, `npm run build`(`tsc --noEmit && vite build`) 성공, `python3 -m py_compile scripts/serve-v2-fixtures.py mock-api/v2.py` 및 `docker compose config --format json | python3 scripts/check-local-compose.py` 통과.
+
+아래 2026-10-11 절은 최초 v2 구현·배포 당시 기록입니다.
+
+## 최초 v2 구현 배경 (2026-10-11)
+
+2026-10-11 `origin/main` (`4f0bea6`)에서 시작한 로컬 `codex/newsmap-v2-20261011` 구현입니다. 새 뉴스맵 UI는 `origin/newsmap-prototype-mock`의 화면·트리 배치를 재사용하고, 탐색·선택·리포트를 정본 [API v2 설계](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/10-newsmap-prototype-api-design.md)에 연결했습니다. 이 문단은 구현 시작점이며 당시 운영 상태는 아래 배포 확인을 따릅니다.
 
 문서 동기화 때 확인한 범위는 기준 커밋 `e986b3f`와 당시 미커밋이던 `NewsMapExplorer.tsx` 변경입니다. 네 저장소의 구현·검증·보류 범위는 정본 `docs/14-newsmap-v2-implementation.md`에 정리했습니다. 문서 동기화에서 화면 로직을 추가 변경하지 않았습니다.
 
@@ -99,12 +114,14 @@ python3 -m py_compile scripts/serve-v2-fixtures.py mock-api/v2.py
 | 파일 | 역할 |
 |---|---|
 | `src/App.tsx` | 홈·키워드·뉴스맵 전환, 같은 탭 복원, 이전 맵 정리 |
+| `src/components/KeywordMap.tsx` | 검색어 기준 2궤도(`issue` / `entity`) 초기 키워드맵 렌더링 |
 | `src/components/NewsMapExplorer.tsx` | 뉴스맵·상세·리포트 패널·서버 진행/근거 표시 |
-| `src/data/newsMapService.ts` | v2 DTO, 쿠키 HTTP, revision/작업/결과 제어 |
+| `src/data/newsMapService.ts` | 키워드맵(`GET /api/v1/keywords/map`) 및 v2 DTO, 쿠키 HTTP, revision/작업/결과 제어 |
+| `src/layout/mapLayout.ts` | 키워드맵 2궤도 좌표·크기·폰트 보정 배치 |
 | `src/layout/newsTree.ts` | 서버 트리 복원, 로컬 좌표·카메라·물리 배치 |
 | `src/data/mockV2.ts` | 명시적 브라우저 UI fixture |
 | `mock-api/v2.py` | 명시적 로컬 HTTP UI fixture |
-| `scripts/test-news-map-v2.mjs` | v2 계약·상태 경합·복원 회귀 |
+| `scripts/test-news-map-v2.mjs` | 키워드맵·뉴스맵 v2 계약·상태 경합·복원·정렬 회귀 |
 | `src/data/apiAdapter.ts` | 보존한 v1 데이터·세션 어댑터 |
 
 프로젝트 문서 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)입니다. 이번 코드 작업에서 정본 문서를 자동 갱신하지 않았습니다.
