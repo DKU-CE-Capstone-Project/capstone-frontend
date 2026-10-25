@@ -37,17 +37,17 @@ export type KeywordProfile = {
 };
 
 export const KEYWORD_PROFILE_FULL: KeywordProfile = {
-  field: { width: 930, height: 620 },
-  center: { size: 208, fontSize: 26 },
-  inner: { rx: 245, ry: 180, size: 118, fontSize: 17, angles: [-45, -135, 135, 45] },
-  outer: { rx: 352, ry: 250, size: 86, fontSize: 13, angles: [-90, 0, 90, 180] },
+  field: { width: 930, height: 588 },
+  center: { size: 196, fontSize: 25 },
+  inner: { rx: 242, ry: 164, size: 122, fontSize: 16, angles: [-45, -135, 135, 45] },
+  outer: { rx: 352, ry: 216, size: 96, fontSize: 13, angles: [-90, 0, 90, 180] },
 };
 
 export const KEYWORD_PROFILE_MOBILE: KeywordProfile = {
-  field: { width: 370, height: 560 },
-  center: { size: 132, fontSize: 17 },
-  inner: { rx: 110, ry: 130, size: 84, fontSize: 12, angles: [-45, -135, 135, 45] },
-  outer: { rx: 144, ry: 200, size: 68, fontSize: 11, angles: [-90, 0, 90, 180] },
+  field: { width: 370, height: 520 },
+  center: { size: 124, fontSize: 16 },
+  inner: { rx: 106, ry: 122, size: 86, fontSize: 12, angles: [-45, -135, 135, 45] },
+  outer: { rx: 134, ry: 184, size: 74, fontSize: 11, angles: [-90, 0, 90, 180] },
 };
 
 export function pickKeywordProfile(containerWidth: number): KeywordProfile {
@@ -57,10 +57,22 @@ export function pickKeywordProfile(containerWidth: number): KeywordProfile {
 /** 중심 1 + 안쪽 4 + 바깥 4. API 기본 추천 키워드 8개 + 검색어와 정확히 맞는다. */
 export const MAX_KEYWORD_NODES = 9;
 
+export type KeywordNodeKind = 'center' | 'issue' | 'entity';
+
+export type KeywordNodeInput = {
+  keyword: string;
+  kind: KeywordNodeKind;
+  search_query?: string;
+  article_count?: number;
+};
+
 export type KeywordNode = {
   keyword: string;
   /** 0 = 중심(검색어), 1~4 = 안쪽 궤도, 5~8 = 바깥 궤도 */
   rank: number;
+  kind?: KeywordNodeKind;
+  searchQuery?: string;
+  articleCount?: number;
   /** 설계 공간 기준 중심 좌표 (px) */
   x: number;
   y: number;
@@ -68,12 +80,78 @@ export type KeywordNode = {
   fontSize: number;
 };
 
+function adjustedKeywordFont(baseFont: number, text: string): number {
+  const trimmed = text.trim();
+  const len = trimmed.length;
+  const maxWordLen = Math.max(0, ...trimmed.split(/\s+/).map((w) => w.length));
+  if (len >= 14 || maxWordLen >= 7) return Math.max(10.5, Math.round(baseFont * 0.74 * 10) / 10);
+  if (len >= 10 || maxWordLen >= 5) return Math.max(11, Math.round(baseFont * 0.82 * 10) / 10);
+  if (len >= 7) return Math.max(11.5, Math.round(baseFont * 0.9 * 10) / 10);
+  return baseFont;
+}
+
 export function layoutKeywordMap(
   keywords: string[],
   profile: KeywordProfile = KEYWORD_PROFILE_FULL,
+  nodeMetas?: KeywordNodeInput[],
 ): KeywordNode[] {
   const cx = profile.field.width / 2;
   const cy = profile.field.height / 2;
+
+  if (nodeMetas && nodeMetas.length > 0) {
+    const centerItem = nodeMetas.find((n) => n.kind === 'center') ?? nodeMetas[0];
+    const issues = nodeMetas
+      .filter((n) => n.kind === 'issue')
+      .slice(0, profile.inner.angles.length);
+    const entities = nodeMetas
+      .filter((n) => n.kind === 'entity')
+      .slice(0, profile.outer.angles.length);
+
+    const out: KeywordNode[] = [
+      {
+        keyword: centerItem.keyword,
+        rank: 0,
+        kind: 'center',
+        searchQuery: centerItem.search_query ?? centerItem.keyword,
+        articleCount: centerItem.article_count,
+        x: cx,
+        y: cy,
+        ...profile.center,
+      },
+    ];
+
+    issues.forEach((item, idx) => {
+      const angle = profile.inner.angles[idx % profile.inner.angles.length] * DEG;
+      out.push({
+        keyword: item.keyword,
+        rank: out.length,
+        kind: 'issue',
+        searchQuery: item.search_query ?? item.keyword,
+        articleCount: item.article_count,
+        x: cx + profile.inner.rx * Math.cos(angle),
+        y: cy + profile.inner.ry * Math.sin(angle),
+        size: profile.inner.size,
+        fontSize: adjustedKeywordFont(profile.inner.fontSize, item.keyword),
+      });
+    });
+
+    entities.forEach((item, idx) => {
+      const angle = profile.outer.angles[idx % profile.outer.angles.length] * DEG;
+      out.push({
+        keyword: item.keyword,
+        rank: out.length,
+        kind: 'entity',
+        searchQuery: item.search_query ?? item.keyword,
+        articleCount: item.article_count,
+        x: cx + profile.outer.rx * Math.cos(angle),
+        y: cy + profile.outer.ry * Math.sin(angle),
+        size: profile.outer.size,
+        fontSize: adjustedKeywordFont(profile.outer.fontSize, item.keyword),
+      });
+    });
+
+    return out;
+  }
 
   return keywords.slice(0, MAX_KEYWORD_NODES).map((keyword, rank) => {
     if (rank === 0) {
@@ -91,7 +169,7 @@ export function layoutKeywordMap(
       x: cx + ring.rx * Math.cos(angle),
       y: cy + ring.ry * Math.sin(angle),
       size: ring.size,
-      fontSize: ring.fontSize,
+      fontSize: adjustedKeywordFont(ring.fontSize, keyword),
     };
   });
 }

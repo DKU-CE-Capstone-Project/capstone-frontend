@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from threading import RLock
 import time
+from urllib.parse import parse_qs, urlsplit
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -119,6 +120,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self): self.send(204)
     def route(self):
         if self.path == '/health': self.send(200,dict(status='local-v2-ui-fixture')); return
+        parsed = urlsplit(self.path)
+        if self.command == 'GET' and parsed.path == '/api/v1/keywords/map':
+            raw_q = (parse_qs(parsed.query).get('q') or [''])[0].strip()
+            if not raw_q:
+                self.send(422,dict(detail='검색어를 입력해 주세요.')); return
+            if raw_q == '검증0':
+                self.send(200,dict(query=raw_q,total_articles=0,keywords=[],nodes=[])); return
+            pool = news_source.search(raw_q, 10)
+            ids = [n['news_id'] for n in pool]
+            seen_topics = []
+            for item in pool:
+                for topic in item.get('topics', []):
+                    if topic != raw_q and topic not in seen_topics:
+                        seen_topics.append(topic)
+            issues = seen_topics[:2]
+            entities = seen_topics[2:6]
+            nodes = [dict(keyword=raw_q,kind='center',article_count=len(ids),search_query=raw_q,center_news_id=ids[0] if ids else None,news_ids=ids)]
+            for t in issues:
+                nodes.append(dict(keyword=t,kind='issue',article_count=max(2,len(ids)//2),search_query=f'{raw_q} {t}',center_news_id=ids[0] if ids else None,news_ids=ids[:2]))
+            for t in entities:
+                nodes.append(dict(keyword=t,kind='entity',article_count=max(2,len(ids)//3),search_query=f'{raw_q} {t}',center_news_id=ids[0] if ids else None,news_ids=ids[:2]))
+            self.send(200,dict(query=raw_q,total_articles=len(ids),keywords=[n['keyword'] for n in nodes],nodes=nodes)); return
         try:
             with LOCK:
                 cookies = SimpleCookie(self.headers.get('Cookie',''))

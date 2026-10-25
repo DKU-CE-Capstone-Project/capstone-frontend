@@ -12,6 +12,7 @@ import {
   forgetMap,
   rememberMap,
   type KeywordMapData,
+  type KeywordMapNodeMeta,
   type NewsMapData,
   type ActiveNewsMap,
 } from './data/newsMapService';
@@ -267,6 +268,7 @@ function App() {
               <SearchResultsView
                 query={keywordMap.query}
                 keywords={keywordMap.keywords}
+                nodeMetas={keywordMap.nodes}
                 busy={loadingLabel !== null}
                 onOpenKeywordNewsMap={openKeywordNewsMap}
               />
@@ -458,11 +460,13 @@ function HomeView({
 function SearchResultsView({
   query,
   keywords,
+  nodeMetas,
   busy,
   onOpenKeywordNewsMap,
 }: {
   query: string;
   keywords: string[];
+  nodeMetas?: KeywordMapNodeMeta[];
   busy: boolean;
   onOpenKeywordNewsMap: (kw: string) => void;
 }) {
@@ -482,7 +486,11 @@ function SearchResultsView({
           />
         </div>
       ) : (
-        <KeywordMap keywords={nodes} onSelect={onOpenKeywordNewsMap} />
+        <KeywordMap
+          keywords={nodes}
+          nodes={nodeMetas}
+          onSelect={onOpenKeywordNewsMap}
+        />
       )}
 
       <motion.div

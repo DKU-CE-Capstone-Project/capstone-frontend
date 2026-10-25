@@ -20,17 +20,34 @@ await build({
 });
 const api = await import(pathToFileURL(join(dir, 'data/newsMapService.js')));
 const tree = await import(pathToFileURL(join(dir, 'layout/newsTree.js')));
+const mockDir = await mkdtemp(join(tmpdir(), 'econmind-v2-mock-'));
+await build({
+  entryPoints: ['src/data/newsMapService.ts'],
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  outdir: mockDir,
+  define: { 'import.meta.env': '{"VITE_NEWS_MAP_SOURCE":"mock"}' },
+});
+const mockApi = await import(pathToFileURL(join(mockDir, 'newsMapService.js')));
 const viewDir = await mkdtemp(join(process.cwd(), 'node_modules', '.econmind-v2-view-'));
 await build({
-  entryPoints: ['src/components/NewsMapExplorer.tsx'],
+  entryPoints: [
+    'src/components/NewsMapExplorer.tsx',
+    'src/components/KeywordMap.tsx',
+    'src/layout/mapLayout.ts',
+  ],
   bundle: true,
   format: 'esm',
   platform: 'node',
   outdir: viewDir,
+  outbase: 'src',
   external: ['react', 'react/jsx-runtime', 'react-dom', 'lucide-react', 'motion/react'],
   define: { 'import.meta.env': '{}' },
 });
-const { NewsMapExplorer } = await import(pathToFileURL(join(viewDir, 'NewsMapExplorer.js')));
+const { NewsMapExplorer, geometry: explorerGeometry } = await import(pathToFileURL(join(viewDir, 'components/NewsMapExplorer.js')));
+const { KeywordMap } = await import(pathToFileURL(join(viewDir, 'components/KeywordMap.js')));
+const mapLayout = await import(pathToFileURL(join(viewDir, 'layout/mapLayout.js')));
 const originalFetch = globalThis.fetch;
 let store;
 let calls;
@@ -172,8 +189,10 @@ const response = (data, status = 200, headers = {}) => ({
 });
 function server(fn) {
   globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url);
     const call = {
-      path: new URL(url).pathname.replace('/api/v2', ''),
+      path: parsed.pathname.replace('/api/v2', ''),
+      search: parsed.search,
       method: options.method,
       body: options.body ? JSON.parse(options.body) : undefined,
       options,
@@ -205,6 +224,7 @@ after(async () => {
   globalThis.fetch = originalFetch;
   delete globalThis.sessionStorage;
   await rm(dir, { recursive: true, force: true });
+  await rm(mockDir, { recursive: true, force: true });
   await rm(viewDir, { recursive: true, force: true });
 });
 
@@ -286,10 +306,165 @@ test('429 from map creation tells the user to wait without retrying the POST', a
     ['GET', '/session'], ['POST', '/maps'],
   ]);
 });
-test('home recommendations and keyword maps use the documented mock without server calls', async () => {
-  server(() => assert.fail('home must not call live API'));
+test('home recommendations stay offline and mock mode keeps keyword maps offline', async () => {
+  server(() => assert.fail('home recommendations and mock mode must not call live API'));
   assert.ok((await api.fetchRecommendedKeywords()).length);
-  assert.ok((await api.fetchKeywordMap('환율')).keywords.includes('환율'));
+  assert.ok((await mockApi.fetchKeywordMap('환율')).keywords.includes('환율'));
+});
+test('fetchKeywordMap calls /api/v1/keywords/map, preserves grounded nodes, and surfaces 429 Retry-After', async () => {
+  await assert.rejects(api.fetchKeywordMap('   '), (error) => {
+    assert.equal(error.status, 422);
+    return true;
+  });
+  assert.equal(calls.length, 0);
+
+  const fixture = {
+    query: '반도체',
+    total_articles: 38,
+    keywords: ['반도체', 'HBM 공급 협상', '파운드리 수율 개선', '삼성전자', 'SK하이닉스'],
+    nodes: [
+      {
+        keyword: '반도체',
+        kind: 'center',
+        article_count: 38,
+        search_query: '반도체',
+        center_news_id: 'n-1',
+        news_ids: ['n-1', 'n-2'],
+      },
+      {
+        keyword: 'HBM 공급 협상',
+        kind: 'issue',
+        article_count: 14,
+        search_query: '반도체 HBM 공급 협상',
+        center_news_id: 'n-2',
+        news_ids: ['n-2', 'n-3'],
+      },
+      {
+        keyword: '파운드리 수율 개선',
+        kind: 'issue',
+        article_count: 9,
+        search_query: '반도체 파운드리 수율 개선',
+        center_news_id: 'n-4',
+        news_ids: ['n-4'],
+      },
+      {
+        keyword: '삼성전자',
+        kind: 'entity',
+        article_count: 18,
+        search_query: '반도체 삼성전자',
+        center_news_id: 'n-1',
+        news_ids: ['n-1'],
+      },
+      {
+        keyword: 'SK하이닉스',
+        kind: 'entity',
+        article_count: 11,
+        search_query: '반도체 SK하이닉스',
+        center_news_id: 'n-2',
+        news_ids: ['n-2'],
+      },
+    ],
+  };
+  server(() => response(fixture));
+  const result = await api.fetchKeywordMap('  반도체  ');
+  assert.equal(result.query, '반도체');
+  assert.deepEqual(result.keywords, fixture.keywords);
+  assert.equal(result.nodes.length, 5);
+  assert.deepEqual(calls.map((c) => [c.method, c.path, c.search]), [
+    ['GET', '/api/v1/keywords/map', '?q=%EB%B0%98%EB%8F%84%EC%B2%B4'],
+  ]);
+  assert.equal(calls[0].options.credentials, 'include');
+
+  calls = [];
+  server(() => response({ detail: '요청이 너무 많습니다.' }, 429, { 'Retry-After': '19' }));
+  await assert.rejects(api.fetchKeywordMap('반도체'), (error) => {
+    assert.equal(error.status, 429);
+    assert.equal(error.retryAfterSeconds, 19);
+    return true;
+  });
+});
+test('KeywordMap keeps issue nodes on inner ring and entity nodes on outer ring even with <4 issues', () => {
+  const nodes = [
+    { keyword: '환율', kind: 'center', article_count: 30, search_query: '환율' },
+    { keyword: '외환당국 구두개입', kind: 'issue', article_count: 12, search_query: '환율 외환당국 구두개입' },
+    { keyword: '수입물가 상승 압력', kind: 'issue', article_count: 7, search_query: '환율 수입물가 상승 압력' },
+    { keyword: '한국은행', kind: 'entity', article_count: 15, search_query: '환율 한국은행' },
+    { keyword: '기획재정부', kind: 'entity', article_count: 8, search_query: '환율 기획재정부' },
+    { keyword: '연준', kind: 'entity', article_count: 5, search_query: '환율 연준' },
+  ];
+  const keywords = nodes.map((n) => n.keyword);
+  const placed = mapLayout.layoutKeywordMap(keywords, mapLayout.KEYWORD_PROFILE_FULL, nodes);
+  assert.equal(placed.length, 6);
+  assert.equal(placed[0].size, mapLayout.KEYWORD_PROFILE_FULL.center.size);
+  for (const issueNode of placed.filter((n) => n.kind === 'issue')) {
+    assert.equal(issueNode.size, mapLayout.KEYWORD_PROFILE_FULL.inner.size);
+  }
+  for (const entityNode of placed.filter((n) => n.kind === 'entity')) {
+    assert.equal(entityNode.size, mapLayout.KEYWORD_PROFILE_FULL.outer.size);
+  }
+  assert.equal(placed[1].searchQuery, '환율 외환당국 구두개입');
+
+  // Legacy positional fallback remains intact when nodeMetas is omitted.
+  const legacy = mapLayout.layoutKeywordMap(keywords, mapLayout.KEYWORD_PROFILE_FULL);
+  assert.equal(legacy[3].size, mapLayout.KEYWORD_PROFILE_FULL.inner.size);
+  assert.equal(legacy[5].size, mapLayout.KEYWORD_PROFILE_FULL.outer.size);
+
+  const html = renderToStaticMarkup(
+    createElement(KeywordMap, {
+      keywords,
+      nodes,
+      onSelect() {},
+    }),
+  );
+  assert.match(html, /is-issue/);
+  assert.match(html, /is-entity/);
+  assert.match(html, /12건/);
+  assert.match(html, /15건/);
+  assert.doesNotMatch(html, /30건/);
+});
+test('KeywordMap nodes stay within field bounds without clipping or overlapping search strip', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const fullNodes = [
+    { keyword: '반도체', kind: 'center', article_count: 37 },
+    { keyword: '솔리다임 상장검토 중단', kind: 'issue', article_count: 8 },
+    { keyword: '산단 인허가·보상·설계', kind: 'issue', article_count: 6 },
+    { keyword: '이건희 선대회장 6주기', kind: 'issue', article_count: 6 },
+    { keyword: 'AI·반도체주 급락', kind: 'issue', article_count: 5 },
+    { keyword: 'SK하이닉스', kind: 'entity', article_count: 14 },
+    { keyword: '개인정보보호위원회', kind: 'entity', article_count: 4 },
+    { keyword: '필라델피아 반도체지수', kind: 'entity', article_count: 4 },
+    { keyword: '삼성전자', kind: 'entity', article_count: 14 },
+  ];
+  const keywords = fullNodes.map((n) => n.keyword);
+
+  for (const profile of [mapLayout.KEYWORD_PROFILE_FULL, mapLayout.KEYWORD_PROFILE_MOBILE]) {
+    const placed = mapLayout.layoutKeywordMap(keywords, profile, fullNodes);
+    assert.equal(placed.length, 9);
+    for (let i = 0; i < placed.length; i++) {
+      const a = placed[i];
+      const hoverRadius = (a.size / 2) * 1.08 + 5;
+      assert.ok(a.x - hoverRadius >= 0, `node ${a.keyword} left edge clipped`);
+      assert.ok(a.x + hoverRadius <= profile.field.width, `node ${a.keyword} right edge clipped`);
+      assert.ok(a.y - hoverRadius >= 0, `node ${a.keyword} top edge clipped`);
+      assert.ok(a.y + hoverRadius <= profile.field.height, `node ${a.keyword} bottom edge clipped`);
+      for (let j = i + 1; j < placed.length; j++) {
+        const b = placed[j];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        assert.ok(dist > (a.size + b.size) / 2 + 8, `nodes ${a.keyword} and ${b.keyword} overlap`);
+      }
+    }
+    const longCompound = placed.find((n) => n.keyword === '개인정보보호위원회');
+    assert.ok(longCompound.fontSize < profile.outer.fontSize);
+  }
+
+  const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const resultsRule = css.match(/\.results-view\s*\{[^}]*padding:\s*(\d+)px\s+[^\s;]+\s+(\d+)px/s);
+  assert.ok(resultsRule, '.results-view padding rule exists');
+  // Header ends at 62px (top 24 + height 38); search strip top is 152px from bottom (bottom 104 + height 48).
+  assert.ok(Number(resultsRule[1]) >= 68, 'top padding clears header bar');
+  assert.ok(Number(resultsRule[2]) >= 160, 'bottom padding clears .result-search-strip');
+  assert.match(css, /\.orbit-field\s*\{[^}]*overflow:\s*visible/s);
+  assert.match(css, /\.keyword-node\s*\{[^}]*overflow-wrap:\s*break-word/s);
 });
 test('same-tab refresh restores map using GET only and coalesces StrictMode setup', async () => {
   api.rememberMap(api.mapFromApi(map(), session));
@@ -1008,4 +1183,30 @@ test('server node IDs cannot collide with local layout IDs or root alias', () =>
   assert.equal(t.nodes['v2:root'].news.id, 'diverse');
   assert.equal(t.nodes['v2:k0'].news.id, 'higher');
   assert.equal(t.order.length, 5);
+});
+
+test('NewsMapExplorer centers camera at viewport midpoint by default and preserves sheet offsets', () => {
+  const geo = explorerGeometry({ width: 1280, height: 832 });
+  assert.equal(geo.cx, 640);
+  assert.equal(geo.cy, 416);
+  assert.equal(geo.detailCx, 380);
+  assert.equal(geo.reportCx, 280);
+
+  const wideGeo = explorerGeometry({ width: 1440, height: 900 });
+  assert.equal(wideGeo.cx, 720);
+  assert.equal(wideGeo.cy, 450);
+  assert.equal(wideGeo.detailCx, 460);
+  assert.equal(wideGeo.reportCx, 360);
+
+  const defaultHtml = renderToStaticMarkup(createElement(NewsMapExplorer, {
+    map: api.mapFromApi(map(), session),
+    onExpired() {},
+    onMap() {},
+    onChrome() {},
+  }));
+  assert.match(
+    defaultHtml,
+    /class="explorer-camera"\s+style="transform:translate\(640\.0px,\s*416\.0px\)\s+scale\(1\.0000\)\s+translate\(0\.00px,\s*0\.00px\)/,
+  );
+  assert.doesNotMatch(defaultHtml, /translate\(542\.0px/);
 });

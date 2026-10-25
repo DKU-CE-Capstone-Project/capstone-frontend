@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { layoutKeywordMap, orbitRings, pickKeywordProfile } from '../layout/mapLayout';
+import {
+  layoutKeywordMap,
+  orbitRings,
+  pickKeywordProfile,
+  type KeywordNodeInput,
+} from '../layout/mapLayout';
 import { fitScale, useFieldSize } from '../layout/useFieldScale';
 import {
   floatAnimation,
@@ -18,9 +23,11 @@ import {
  */
 export function KeywordMap({
   keywords,
+  nodes: nodeMetas,
   onSelect,
 }: {
   keywords: string[];
+  nodes?: KeywordNodeInput[];
   onSelect: (keyword: string) => void;
 }) {
   const { ref, size } = useFieldSize();
@@ -29,7 +36,7 @@ export function KeywordMap({
 
   const profile = pickKeywordProfile(size.width || 930);
   const scale = fitScale(size, profile.field);
-  const nodes = layoutKeywordMap(keywords, profile);
+  const nodes = layoutKeywordMap(keywords, profile, nodeMetas);
 
   return (
     <div className="orbit-field" ref={ref}>
@@ -89,7 +96,7 @@ export function KeywordMap({
               >
                 <motion.button
                   type="button"
-                  className={`keyword-node${isCenter ? ' is-center' : ''}`}
+                  className={`keyword-node${isCenter ? ' is-center' : ''}${node.kind === 'issue' ? ' is-issue' : ''}${node.kind === 'entity' ? ' is-entity' : ''}`}
                   style={{ width: node.size, height: node.size, fontSize: node.fontSize }}
                   animate={{ opacity: dimmed ? 0.45 : 1 }}
                   whileHover={{ scale: 1.08 }}
@@ -99,10 +106,14 @@ export function KeywordMap({
                   onHoverEnd={() => setHovered(null)}
                   onFocus={() => setHovered(node.rank)}
                   onBlur={() => setHovered(null)}
-                  onClick={() => onSelect(node.keyword)}
+                  onClick={() => onSelect(node.searchQuery ?? node.keyword)}
+                  title={node.keyword}
                   aria-label={`${node.keyword} 관련 뉴스맵 열기`}
                 >
                   <span>{node.keyword}</span>
+                  {!isCenter && typeof node.articleCount === 'number' && node.articleCount > 0 && (
+                    <small className="keyword-node-count">{node.articleCount}건</small>
+                  )}
                 </motion.button>
               </motion.div>
             </motion.div>
