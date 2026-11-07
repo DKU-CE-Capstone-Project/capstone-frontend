@@ -2,6 +2,17 @@
 
 React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 프로젝트 문서 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)입니다.
 
+## WP9·WP11 리포트 근거 연결 (2026-11-07)
+
+[PR #21](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/21)을 `main` **`918891a`**에 병합했습니다. 기사 근거를 표시하는 화면 E·F·H를 구현했습니다.
+
+- **WP9 · 인용 칩:** 종목 영향의 `evidence_news_ids`를 실제 사용 근거와 대조해 선택 기사 번호를 표시합니다. 칩을 누르면 **분석 근거와 제한**의 해당 기사를 강조하고 포커스합니다. 근거나 번호를 확인할 수 없는 인용은 확인 불가로 표시합니다.
+- **WP11 · 근거 사슬:** 전략 항목과 이름·종목 코드가 같은 리포트 종목 영향을 연결하고, 해당 영향의 사용 기사 칩을 표시합니다. 일치하는 영향이 없으면 연결할 수 없다고 표시합니다. 이는 별도 영향 ID를 이용한 인과 검증이 아닙니다.
+- **WP11 · 기사 배지:** 완성된 현재 리포트의 본문 사용·실패 결과를 뉴스맵 노드에 표시합니다. 닫힌 패널도 GET으로 결과를 복원하고, 선택이 바뀐 뒤 늦게 도착한 결과는 반영하지 않습니다.
+- **전략 요약 카드:** 전략이 있으면 요약을 표시합니다. `중립적 관점`은 전략의 `risk_level=medium`에 대응하는 화면 라벨입니다. 전략 생성이 실패하면 리포트를 유지하고 안내합니다. 관련 백엔드 수정은 [PR #34](https://github.com/DKU-CE-Capstone-Project/capstone-backend/pull/34)입니다.
+
+`npm test` **73 passed**, `npm run build`의 타입 검사·빌드와 로컬 Compose 포트 검사가 통과했고, PR과 병합 후 `main` CI도 통과했습니다. 로컬 브라우저에서는 실제 기사 5건의 저장 리포트 1건과 새로 생성된 전략의 표시를 확인했습니다. 이 사례는 소표본이며 이번 작업에서 GCP 배포는 수행하지 않았습니다. 전체 완료 범위와 검증 기록은 [정본 문서 PR #28](https://github.com/DKU-CE-Capstone-Project/econmind-docs/pull/28)에 정리했습니다.
+
 ## 키워드맵 실데이터 연결 및 화면 정렬 개선 (2026-10-25)
 
 초기 키워드 맵(`02 키워드 맵`)을 백엔드 실시간 뉴스 추출 API에 연결하고, 키워드맵·뉴스맵 두 마인드맵 화면의 배치 및 정렬을 개선했습니다(`feat/keyword-map-gemini` → `main`).
