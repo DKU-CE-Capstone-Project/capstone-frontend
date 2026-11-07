@@ -248,6 +248,62 @@ test('API thumbnails reach news-map card and detail images without substituting 
   assert.doesNotMatch(html, /images\.unsplash\.com/);
 });
 
+test('restores completed evidence for closed-map badges with GETs only', async () => {
+  const saved = map({
+    selected_news_ids: ['a'],
+    report_panel_open: false,
+    last_result: { report_id: 'report', strategy_id: null },
+  });
+  server((c) => response(c.path === '/reports/report' ? report() : saved));
+  const c = controller(saved);
+  c.setVisible(true);
+  await until(() => c.state.report !== null);
+  assert.deepEqual(c.state.report.evidence.map((e) => e.news_id), ['a']);
+  assert.deepEqual(c.state.report.stockImpacts[0].evidence_news_ids, ['a']);
+  assert.deepEqual(calls.map(({ method, path }) => [method, path]), [['GET', '/reports/report']]);
+});
+
+test('closed-map evidence survives a strategy lookup failure', async () => {
+  const saved = map({
+    selected_news_ids: ['a'],
+    report_panel_open: false,
+    last_result: { report_id: 'report', strategy_id: 'strategy' },
+  });
+  server((c) => {
+    if (c.path === '/reports/report') return response(report());
+    if (c.path === '/strategies/strategy') return response({}, 503);
+    throw new Error(`unexpected ${c.method} ${c.path}`);
+  });
+  const c = controller(saved);
+  c.setVisible(true);
+  await until(() => c.state.report !== null);
+  assert.deepEqual(c.state.report.evidence.map((e) => e.news_id), ['a']);
+  assert.ok(c.state.report.warnings.includes('STRATEGY_LOAD_FAILED'));
+  assert.ok(calls.every(({ method }) => method === 'GET'));
+});
+
+test('a delayed closed-map result cannot restore badges after selection changes', async () => {
+  const saved = map({
+    selected_news_ids: ['a'],
+    report_panel_open: false,
+    last_result: { report_id: 'report', strategy_id: null },
+  });
+  let releaseReport;
+  server((c) => {
+    if (c.path === '/reports/report') return new Promise((resolve) => { releaseReport = resolve; });
+    if (c.method === 'PATCH') return response({ ...saved, revision: 2, selected_news_ids: [], last_result: null });
+    throw new Error(`unexpected ${c.method} ${c.path}`);
+  });
+  const c = controller(saved);
+  c.setVisible(true);
+  await until(() => !!releaseReport);
+  await c.select('a');
+  releaseReport(response(report()));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(c.state.report, null);
+  assert.deepEqual(c.state.map.selected_news_ids, []);
+});
+
 test('v2 requests include cookies, omit JS session secrets, and preserve server MMR order', async () => {
   server((c) =>
     response(

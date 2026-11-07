@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import type { NewsCard } from '../data/mockData';
+import { evidenceStatus, numberEvidence } from '../data/reportEvidence';
 import {
   USE_MOCK,
   NewsMapController,
@@ -27,6 +28,7 @@ import {
   selectionMessage,
   STAGE_LABEL,
   reportTitle,
+  sameIds,
   type ActiveNewsMap,
   type ControllerState,
   type V2Report,
@@ -50,6 +52,12 @@ import {
 } from '../layout/newsTree';
 import { useFieldSize } from '../layout/useFieldScale';
 import { useLoadingStage } from './loadingStage';
+import { CitationChips } from './CitationChips';
+import { EvidenceChain } from './EvidenceChain';
+import {
+  EvidenceStatusBadge,
+  EVIDENCE_STATUS_LABEL,
+} from './EvidenceStatusBadge';
 import { PremiumPreview, SmartImage } from './ui';
 
 /**
@@ -195,6 +203,18 @@ export function NewsMapExplorer({
       ? 3
       : 0;
   const report = server.report;
+  const [highlightedEvidence, setHighlightedEvidence] = useState<string | null>(
+    null,
+  );
+  const evidenceRefs = useRef(new Map<string, HTMLLIElement>());
+  useEffect(() => setHighlightedEvidence(null), [report?.id]);
+  const showEvidence = (newsId: string) => {
+    const row = evidenceRefs.current.get(newsId);
+    if (!row) return;
+    setHighlightedEvidence(newsId);
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.focus({ preventScroll: true });
+  };
   const [loadingId, setLoadingId] = useState<string | null>(null);
   /** 펼치기·재검색(POST /branches) 대기 단계. 그 카드에만 표시하고 다른 카드는 그대로 조작한다. */
   const branchStage = useLoadingStage(
@@ -623,6 +643,15 @@ export function NewsMapExplorer({
   const liveSel = sel.filter((k) => tree.nodes[k]);
   const selCount = liveSel.length;
   const evIndex = new Map(liveSel.map((k, i) => [k, i + 1]));
+  const evidenceNumbers = numberEvidence(
+    liveSel.map((id) => tree.nodes[id].news.id),
+  );
+  const currentReport =
+    report &&
+    server.map.last_result?.report_id === report.id &&
+    sameIds(report.requestedNewsIds, server.map.selected_news_ids)
+      ? report
+      : null;
   const detailNode = detailId ? (tree.nodes[detailId] ?? null) : null;
   const rings = ringPaths(tree, focusId);
   const edges = edgePaths(tree);
@@ -800,6 +829,7 @@ export function NewsMapExplorer({
                   ? 1
                   : 0.3;
             const evNo = reportOpen ? evIndex.get(id) : undefined;
+            const resultStatus = evidenceStatus(currentReport, n.news.id);
 
             return (
               <div
@@ -831,7 +861,7 @@ export function NewsMapExplorer({
                       onKeyDown={nodeKeyDown(id)}
                       aria-pressed={selected}
                       aria-busy={stage ? true : undefined}
-                      aria-label={`${n.news.title} — 클릭 선택, 더블클릭 가운데로, Space를 누른 채 클릭(키보드는 Shift+Enter) 검색`}
+                      aria-label={`${n.news.title}${resultStatus ? ` · ${EVIDENCE_STATUS_LABEL[resultStatus]}` : ''} — 클릭 선택, 더블클릭 가운데로, Space를 누른 채 클릭(키보드는 Shift+Enter) 검색`}
                     >
                       <span
                         className="map-card-thumb"
@@ -871,6 +901,7 @@ export function NewsMapExplorer({
                         {evNo ?? <Check size={16} strokeWidth={3} />}
                       </span>
                     )}
+                    <EvidenceStatusBadge status={resultStatus} />
                     <button
                       type="button"
                       className="map-card-detail"
@@ -1251,7 +1282,7 @@ export function NewsMapExplorer({
                     key={`${stock.name}-${i}`}
                     className={`report-stock ${stock.direction}`}
                   >
-                    <div>
+                    <div className="report-stock-heading">
                       <strong>{stock.name}</strong>
                       <span>{DIRECTION_LABEL[stock.direction]}</span>
                     </div>
@@ -1261,6 +1292,12 @@ export function NewsMapExplorer({
                       </span>
                     )}
                     {stock.impact && <p>{stock.impact}</p>}
+                    <CitationChips
+                      newsIds={stock.evidence_news_ids}
+                      evidence={report.evidence}
+                      numbers={evidenceNumbers}
+                      onSelect={showEvidence}
+                    />
                   </article>
                 ))}
               </section>
@@ -1274,6 +1311,11 @@ export function NewsMapExplorer({
                   </div>
                 </section>
               )}
+              <EvidenceChain
+                report={report}
+                numbers={evidenceNumbers}
+                onSelect={showEvidence}
+              />
               <section className="report-text">
                 <h3>리스크 요인</h3>
                 <div className="sheet-tags">
@@ -1294,17 +1336,50 @@ export function NewsMapExplorer({
                   {report.coverage.used_count}건 · 실패{' '}
                   {report.coverage.failed_count}건
                 </p>
-                {report.evidence.map((e) => (
-                  <p key={e.news_id}>
-                    {e.title} · {e.source_name}
-                    {e.truncated ? ' · 본문 일부 사용' : ''}
-                  </p>
-                ))}
-                {report.failedEvidence.map((e) => (
-                  <p className="report-warning" key={e.news_id}>
-                    미사용 기사 {e.news_id} · {e.code}: {e.message}
-                  </p>
-                ))}
+                <ul
+                  className="report-evidence-list"
+                  aria-label="리포트에 사용된 기사"
+                >
+                  {report.evidence.map((e) => (
+                    <li
+                      key={e.news_id}
+                      ref={(row) => {
+                        if (row) evidenceRefs.current.set(e.news_id, row);
+                        else evidenceRefs.current.delete(e.news_id);
+                      }}
+                      tabIndex={-1}
+                      className={
+                        highlightedEvidence === e.news_id
+                          ? 'is-highlighted'
+                          : undefined
+                      }
+                    >
+                      <span className="report-evidence-number">
+                        {evidenceNumbers.has(e.news_id)
+                          ? `#${evidenceNumbers.get(e.news_id)}`
+                          : '번호 확인 불가'}
+                      </span>
+                      <span>
+                        {e.title} · {e.source_name}
+                        {e.truncated ? ' · 본문 일부 사용' : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {report.failedEvidence.map((e) => {
+                  const title = server.map.nodes.find(
+                    (node) => node.news_id === e.news_id,
+                  )?.news.title;
+                  return (
+                    <p className="report-warning" key={e.news_id}>
+                      미사용 기사{' '}
+                      {evidenceNumbers.has(e.news_id)
+                        ? `#${evidenceNumbers.get(e.news_id)}`
+                        : e.news_id}
+                      {title ? ` · ${title}` : ''} · {e.code}: {e.message}
+                    </p>
+                  );
+                })}
                 <h3>
                   리포트 근거 검증:{' '}
                   {
@@ -1335,22 +1410,6 @@ export function NewsMapExplorer({
                     전략 결과가 없습니다. 리포트는 유지됩니다.
                   </p>
                 )}
-                {report.strategyItems.length > 0 && <h3>전략 제안</h3>}
-                {report.strategyItems.map((item, i) => (
-                  <p key={i}>
-                    {item.stock_name}
-                    {item.ticker ? ` (${item.ticker})` : ''} ·{' '}
-                    {
-                      {
-                        buy: '매수 관점',
-                        hold: '보유 관점',
-                        sell: '매도 관점',
-                        watch: '관망',
-                      }[item.action]
-                    }{' '}
-                    · {item.reason}
-                  </p>
-                ))}
                 {report.ragEvidence.length > 0 && (
                   <>
                     <h3>자동 검색 참고 자료</h3>
