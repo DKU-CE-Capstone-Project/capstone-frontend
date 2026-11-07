@@ -663,6 +663,30 @@ p {
   font-weight: var(--weight-black);
 }
 
+.map-evidence-status {
+  position: absolute;
+  top: 3%;
+  left: 2%;
+  padding: 4px 8px;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-full);
+  background: var(--brand-soft);
+  color: var(--brand-fg);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.map-evidence-status.is-failed,
+.map-evidence-status.is-conflict {
+  border-color: var(--warn-border);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 /* 버튼 중첩을 피하려고 카드의 형제로 두고 위에 겹친다 */
 .map-card-detail {
   position: absolute;
@@ -1427,7 +1451,7 @@ p {
   background: var(--mixed-soft);
 }
 
-.report-stock > div {
+.report-stock-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1441,7 +1465,7 @@ p {
 }
 
 /* 색만으로 방향을 나타내면 색각 이상 사용자가 구분할 수 없어 글자로도 적는다 */
-.report-stock > div span {
+.report-stock-heading span {
   flex-shrink: 0;
   padding: 1px var(--space-2);
   border: 1px solid currentColor;
@@ -1450,15 +1474,15 @@ p {
   font-weight: var(--weight-bold);
 }
 
-.report-stock.up > div span {
+.report-stock.up .report-stock-heading span {
   color: var(--up);
 }
 
-.report-stock.down > div span {
+.report-stock.down .report-stock-heading span {
   color: var(--down);
 }
 
-.report-stock.mixed > div span {
+.report-stock.mixed .report-stock-heading span {
   color: var(--mixed);
 }
 
@@ -1473,6 +1497,109 @@ p {
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: 1.45;
+}
+
+.citation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.citation-chip {
+  min-height: 28px;
+  padding: 2px 9px;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--brand-fg);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}
+
+.citation-chip:hover {
+  background: var(--brand-soft);
+}
+
+.citation-missing {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.report-text .evidence-chain-intro {
+  font-size: var(--text-sm);
+}
+
+.evidence-chain-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+
+.evidence-chain-step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.evidence-chain-step + .evidence-chain-step {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--brand-border);
+}
+
+.evidence-chain-label {
+  color: var(--brand-fg);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+}
+
+.report-text .evidence-chain-item p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.report-text .evidence-chain-missing {
+  color: var(--text-tertiary);
+}
+
+.report-evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.report-evidence-list li {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  scroll-margin-block: 90px;
+}
+
+.report-evidence-list li.is-highlighted {
+  border-color: var(--brand-border);
+  background: var(--brand-soft);
+  color: var(--text-primary);
+}
+
+.report-evidence-number {
+  flex-shrink: 0;
+  color: var(--brand-fg);
+  font-weight: var(--weight-bold);
 }
 
 .report-strategy {

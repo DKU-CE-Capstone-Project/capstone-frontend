@@ -867,8 +867,26 @@ export class NewsMapController {
   }
   setVisible(visible: boolean) {
     this.viewOpen = visible;
-    if (visible) this.observe();
-    else this.stopPolling();
+    if (!visible) {
+      this.stopPolling();
+    } else if (
+      !this.state.map.report_panel_open &&
+      !this.state.map.active_report_job_id &&
+      this.state.map.last_result &&
+      !this.state.report
+    ) {
+      // Restore node evidence badges with GETs even if the report panel is closed.
+      this.stopPolling();
+      const token = this.requestToken;
+      const abort = new AbortController();
+      this.pollAbort = abort;
+      void this.loadResult(this.state.map.last_result, token, abort.signal).catch(
+        (error) => {
+          if (!abort.signal.aborted && token === this.requestToken)
+            this.handle(error);
+        },
+      );
+    } else this.observe();
   }
   stopPolling() {
     ++this.requestToken;
