@@ -2,6 +2,17 @@
 
 React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 프로젝트 문서 정본은 [econmind-docs](https://github.com/DKU-CE-Capstone-Project/econmind-docs)입니다.
 
+<a id="newsmap-next-issue-20261108"></a>
+
+## 뉴스맵에서 다른 이슈 보기 (2026-11-08)
+
+상세·리포트 패널을 닫은 뉴스맵에서 `next_issue`가 있거나 `can_find_next_issue`가 `true`이면 상단에 **다른 이슈 보기**를 표시합니다. 이미 확인한 이슈의 제목을 보여주고, 제목이 없으면 같은 검색어에서 다른 주제를 찾을 수 있다고 안내합니다. 연관 기사 4건인 맵에도 버튼이 표시되며, 별도 영역에 배치해 기사 카드를 가리지 않습니다. [화면 구현](src/components/NewsMapExplorer.tsx) · [PR #23](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/23)
+
+- 버튼을 누를 때만 `POST /api/v2/maps/{map_id}/next-issue`를 보냅니다. 새 맵을 받으면 연관 기사가 0건이어도 새 중심을 표시합니다. 같은 맵을 받으면 현재 선택을 유지하고 ‘같은 검색어에서 다른 이슈를 찾지 못했어요.’를 표시합니다. [요청 처리](src/data/newsMapService.ts)
+- **이전 뉴스맵**은 `previous_issue_map_id`로 GET 요청을 보내 앞선 맵의 선택과 연결된 결과를 복원합니다. 화면마다 조작 참조를 따로 두어 이전 화면의 전환 애니메이션이 끝난 뒤에도 새 맵의 버튼을 누를 수 있습니다. [화면 전환](src/App.tsx) · [PR #24](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/24)
+
+GCP에 최종 프론트 `f6ac1b3`를 반영했습니다. 운영 브라우저에서 ‘반도체’의 연관 기사 **1건 → 4건 → 0건**으로 연속 전환하고 이전 선택을 복원했습니다. 4건 맵에서 보낸 전환 요청은 HTTP 200이었고 모니터링 수집 DB에서도 확인했습니다. 배포 기준의 `npm test` 77건과 `npm run build`를 통과했고, Chrome fixture에서 4건 맵의 연속 전환과 이전 맵 조회를 확인했습니다. [최종 main CI](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/actions/runs/42477476014) · [정본 배포·모니터링 기록](https://github.com/DKU-CE-Capstone-Project/econmind-docs/blob/main/docs/99-verification.md#newsmap-next-issue-20261108)
+
 ## WP9·WP11 리포트 근거 연결 (2026-11-07)
 
 [PR #21](https://github.com/DKU-CE-Capstone-Project/capstone-frontend/pull/21)을 `main` **`918891a`**에 병합했습니다. 기사 근거를 표시하는 화면 E·F·H를 구현했습니다.
@@ -36,12 +47,12 @@ React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 프로
 
 ## 현재 연결
 
-- 홈 추천과 키워드맵은 설계대로 `fetchMockRecommendedKeywords` / `fetchMockKeywordMap`을 사용합니다. 이 화면에서 서버 뉴스 검색·본문 추출을 시작하지 않습니다.
+- 홈 추천은 고정 목록입니다. 실제 API 모드에서 키워드맵은 `GET /api/v1/keywords/map`으로 구성합니다.
 - 뉴스맵은 `POST /api/v2/maps`의 중심·최초 주변 목표 4건과 서버 선정 순서를 표시합니다. Space+클릭 또는 Shift+Enter로 가지 펼치기·재검색(하위 목표 3건)을 요청합니다. 중심 이동·휠·끌기·미니맵은 프론트 좌표만 바꿉니다. 현재 작업 트리는 휠 확대가 기존 상태 안내를 확대 배율 문구로 덮어쓰지 않게 합니다.
-- 백엔드는 최초 허용 검색 결과를 중심으로 사용하며, 기본 원래 검색어의 1~20 → 21~40 → 41~50 범위에서 필요한 만큼 후보를 확보합니다. 4/3건은 보장 개수가 아니므로 부족 상태도 표시합니다. 중심 자동 재선정·Decision 기준 완화·본문을 통한 주변 선정 보강은 검토 후 보류했으며 현재 UI/API 동작에 적용되지 않았습니다.
+- 백엔드는 최초 허용 검색 결과를 중심으로 사용하며, 원래 검색어의 1~20 → 21~40 → 41~50 범위에서 필요한 만큼 후보를 확보합니다. 목표보다 적게 선정된 경우도 표시합니다. 같은 검색어에서 다른 중심을 보려면 [다른 이슈 보기](#newsmap-next-issue-20261108)를 사용합니다.
 - 뉴스맵 캔버스에는 기사 카드와 카드에서 펼친 가지를 표시합니다. 프로토타입의 키워드 노드·키워드 점선·바깥 키워드 궤도·키워드맵 이동 동작은 제거했습니다. 기사 키워드는 상세 패널의 태그로 제공합니다.
 - 서버의 `Session.capabilities`를 읽습니다. FREE는 선택 1건 교체·해제, PAID 프로토타입 설정은 최대 10건 추가·해제입니다. 클라이언트가 요청 본문에 티어를 보내지 않습니다. 로그인·결제 검증은 포함하지 않습니다.
-- 변경에는 `expected_revision`을 붙입니다. 카드 연속 클릭을 직렬화하고 409 충돌은 최신 맵을 다시 읽은 뒤 오류를 표시합니다. 재검색 0건은 서버가 반환한 기존 가지·선택을 유지합니다. 부족·일시적인 부분 결과·외부 실패를 구분하며 샘플 기사로 채우지 않습니다.
+- 기사 선택, 가지 펼치기, 초기화처럼 기존 맵의 변경을 요청할 때는 `expected_revision`을 붙입니다. 카드 연속 클릭을 직렬화하고 409 충돌은 최신 맵을 다시 읽은 뒤 오류를 표시합니다. 재검색 0건은 서버가 반환한 기존 가지·선택을 유지합니다. 부족·일시적인 부분 결과·외부 실패를 구분하며 샘플 기사로 채우지 않습니다.
 - 리포트는 선택한 실제 `news_id`만 `POST /api/v2/report-jobs`에 보냅니다. 선택하지 않은 중심을 추가하지 않습니다. `Idempotency-Key`와 요청 UUID를 사용하며 네트워크/큐 접수 재시도에서 동일 입력·키를 유지합니다.
 - 생성 단계와 처리·성공·실패 건수는 GET 작업 응답을 표시합니다. 임의 백분율·추정 진행률을 만들지 않습니다. 완료 후 맵 revision·활성 작업·결과 연결을 확인하고 리포트와 별도 전략을 읽습니다.
 - 성공 본문·실패 기사·coverage·본문 절단 여부·자동 검색 참고 자료·critic 검증 상태를 구분합니다. 전략 실패는 완성된 리포트를 유지하며 전략 행동과 주가 영향 방향을 서로 바꾸지 않습니다. 확인되지 않은 종목 코드·영향 방향도 그대로 표시합니다.
@@ -52,7 +63,7 @@ React 19 · TypeScript · Vite 기반 뉴스맵 프론트엔드입니다. 프로
 
 요청은 `credentials: include`와 HttpOnly `econmind_sid` 쿠키를 사용합니다. 같은 탭 `sessionStorage`의 `econmind.v2.navigation`에는 `{session_epoch, map_id}`만 저장합니다. 트리·리포트·세션 비밀 ID를 브라우저 저장소에 복사하지 않습니다. 기존 main의 v1 어댑터·세션 보안 구현은 보존했습니다.
 
-새로고침은 GET 세션 → GET 기존 맵 → GET 기존 활성 작업/최종 결과 순서입니다. 새 생성 POST를 자동 보내지 않습니다. 패널 닫기/다른 화면 이동은 폴링만 중단하며 작업 취소는 별도 버튼입니다. 선택 변경·초기화·맵 삭제의 취소 규칙은 서버가 적용합니다. 늦게 도착한 이전 작업은 현재 선택·활성 결과를 바꾸지 못합니다. 만료 시 이전 탐색 참조를 지우고 홈으로 돌아갑니다. 새 키워드로 이동하면 이전 맵을 DELETE로 정리합니다.
+새로고침은 GET 세션 → GET 기존 맵 → GET 기존 활성 작업/최종 결과 순서입니다. 새 생성 POST를 자동 보내지 않습니다. 패널 닫기/다른 화면 이동은 폴링만 중단하며 작업 취소는 별도 버튼입니다. 선택 변경·초기화·맵 삭제의 취소 규칙은 서버가 적용합니다. 늦게 도착한 이전 작업은 현재 선택·활성 결과를 바꾸지 못합니다. 만료 시 이전 탐색 참조를 지우고 홈으로 돌아갑니다. 새 키워드의 맵을 열면 `DELETE /api/v2/maps/{map_id}?include_issues=true`로 이전 검색에 속한 맵을 정리합니다.
 
 테마 값만 기존 `localStorage`에 유지합니다. API 비밀키·DB 계정은 프론트에 넣지 않습니다.
 
@@ -67,7 +78,7 @@ VITE_API_BASE=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173
 
 ### 실제 NAVER·Decision 탐색
 
-백엔드의 `scripts/run-newsmap-v2-local.py`로 실제 검색·선정 API를 8026 포트에 실행한 뒤 `npm run dev:live`로 5196 미리보기를 엽니다. 이 명령은 브라우저 mock을 끄고 실제 `/api/v2`에 연결합니다. 홈 추천·키워드맵은 설계대로 고정 mock을 유지하며 뉴스맵을 열 때 실제 검색을 시작합니다.
+백엔드의 `scripts/run-newsmap-v2-local.py`로 실제 검색·선정 API를 8026 포트에 실행한 뒤 `npm run dev:live`로 5196 미리보기를 엽니다. 키워드맵은 `/api/v1/keywords/map`, 뉴스맵은 실제 `/api/v2`에 연결됩니다. 이슈 전환은 버튼이 제공되는 맵에서 연속으로 눌러 각 클릭의 POST를 확인하고, **이전 뉴스맵**으로 돌아가 기사 선택을 확인합니다.
 
 현재 로컬 프로토타입은 PAID 기준으로 최대 10건을 추가·해제한다. 백엔드 로컬 실행 스크립트의 기본 티어가 PAID이며, 프론트는 실제 API 세션의 capability를 사용한다. 무료 선택 교체 동작은 백엔드를 `--tier FREE`로 실행해 검증한다.
 
