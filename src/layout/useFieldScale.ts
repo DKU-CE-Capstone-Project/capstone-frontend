@@ -18,12 +18,13 @@ export function useFieldSize() {
     if (!el) return;
 
     const measure = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
+      // Measure the layout box without the screen transition's temporary scale.
+      const { clientWidth: width, clientHeight: height } = el;
+      if (width === 0 || height === 0) return;
       setSize((prev) =>
-        prev.width === rect.width && prev.height === rect.height
+        prev.width === width && prev.height === height
           ? prev
-          : { width: rect.width, height: rect.height },
+          : { width, height },
       );
     };
 

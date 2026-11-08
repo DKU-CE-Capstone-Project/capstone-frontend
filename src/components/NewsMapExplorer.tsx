@@ -12,6 +12,7 @@ import {
   type Ref,
 } from 'react';
 import {
+  ArrowRight,
   Check,
   ExternalLink,
   FileText,
@@ -31,6 +32,7 @@ import {
   sameIds,
   type ActiveNewsMap,
   type ControllerState,
+  type NewsMapData,
   type V2Report,
 } from '../data/newsMapService';
 import {
@@ -86,6 +88,7 @@ export type NewsMapChrome = {
 export type NewsMapExplorerHandle = {
   /** 하단 네비의 리포트 버튼: 선택한 카드(없으면 지금 보는 상세 카드)로 리포트를 연다. */
   openReport: () => void;
+  openNextIssue: () => Promise<NewsMapData>;
 };
 
 export const NEWS_MAP_DEFAULT_STATUS =
@@ -154,6 +157,7 @@ export function NewsMapExplorer({
   onExpired,
   onMap,
   onChrome,
+  onNextIssue,
   ref,
   orbitRotating = 3,
   orbitSpeed = 1,
@@ -162,13 +166,14 @@ export function NewsMapExplorer({
   onExpired: (mapId: string) => void;
   onMap: (map: import('../data/newsMapService').NewsMapData) => void;
   onChrome: (chrome: NewsMapChrome) => void;
+  onNextIssue: () => void;
   ref?: Ref<NewsMapExplorerHandle>;
   /** 몇 번째 궤도까지 회전할지 (프로토타입 Tweaks 기본값 3) */
   orbitRotating?: number;
   /** 궤도 회전 속도 배율 */
   orbitSpeed?: number;
 }) {
-  const { ref: fieldRef, size } = useFieldSize();
+  const { ref: viewportRef, size } = useFieldSize();
   const viewport: Viewport = {
     width: size.width || 1280,
     height: size.height || 832,
@@ -226,7 +231,6 @@ export function NewsMapExplorer({
   const [status, setStatus] = useState(selectionMessage(map.initial_selection));
   const [spaceHeld, setSpaceHeld] = useState(false);
 
-  const viewportRef = useRef<HTMLDivElement | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
   const velRef = useRef<Record<string, Vec>>({});
   const rafRef = useRef<number | null>(null);
@@ -451,8 +455,9 @@ export function NewsMapExplorer({
     ref,
     () => ({
       openReport: () => latest.current.openReport(latest.current.detailId),
+      openNextIssue: () => controller.openNextIssue(),
     }),
-    [],
+    [controller],
   );
 
   // Esc: 리포트 → 상세 순으로 닫는다. 패널 안에 포커스가 있어도 동작하도록 창에 건다.
@@ -725,6 +730,10 @@ export function NewsMapExplorer({
     : detailNode
       ? 'detail'
       : 'none';
+  const nextIssue = server.map.next_issue;
+  const showNextIssue =
+    panel === 'none' && Boolean(nextIssue || server.map.can_find_next_issue);
+  const compactHelp = showNextIssue && viewport.width <= 960;
   const chip = reportOpen
     ? '레포트'
     : detailNode
@@ -751,9 +760,63 @@ export function NewsMapExplorer({
   const working =
     server.job &&
     ['queued', 'running', 'cancel_requested'].includes(server.job.status);
+  const selectionTray = selCount > 0 && !reportOpen && (
+    <div
+      className="selection-tray"
+      role="region"
+      aria-label="선택한 뉴스"
+      style={{ left: detailNode ? geo.detailCx : '50%' }}
+    >
+      <span className="tray-count">
+        <span className="tray-badge">{selCount}</span>건 선택됨
+      </span>
+      <button type="button" className="btn-ghost" onClick={clearSel}>
+        선택 해제
+      </button>
+      <button
+        type="button"
+        className="btn-brand"
+        onClick={() => openReport(null)}
+      >
+        <FileText size={14} aria-hidden="true" />
+        선택한 뉴스로 리포트 만들기
+      </button>
+    </div>
+  );
+  const helpRows = (
+    <div className="map-help-rows">
+      <strong>클릭</strong>
+      <span>카드 선택·해제</span>
+      <strong>더블클릭</strong>
+      <span>가운데로 이동</span>
+      <strong>Space + 클릭</strong>
+      <span>그 카드 기준 검색 (하위 뉴스 펼치기·재검색)</span>
+      <strong>휠</strong>
+      <span>확대·축소</span>
+      <strong>끌기</strong>
+      <span>화면 이동</span>
+    </div>
+  );
 
   return (
-    <div className="news-explorer" ref={fieldRef}>
+    <div className="news-explorer">
+      {showNextIssue && (
+        <div className="next-issue-dock">
+          <aside className="next-issue-offer" aria-label="다른 이슈 추천">
+            <div>
+              <p className="next-issue-label">같은 검색어의 다른 이슈</p>
+              <p className="next-issue-title" title={nextIssue?.title}>
+                {nextIssue?.title ?? '검색 결과에서 다른 주제를 찾아보세요.'}
+              </p>
+            </div>
+            <button type="button" className="btn-brand" onClick={onNextIssue}>
+              다른 이슈 보기
+              <ArrowRight size={14} aria-hidden="true" />
+            </button>
+          </aside>
+          {selectionTray}
+        </div>
+      )}
       <div
         ref={viewportRef}
         className={`explorer-viewport${spaceHeld ? ' space-mode' : ''}${dragging ? ' is-dragging' : ''}`}
@@ -924,43 +987,18 @@ export function NewsMapExplorer({
       <PremiumPreview
         maxArticles={server.map.session.capabilities.max_report_articles}
       />
+      {!showNextIssue && selectionTray}
 
-      {selCount > 0 && !reportOpen && (
-        <div
-          className="selection-tray"
-          role="region"
-          aria-label="선택한 뉴스"
-          style={{ left: detailNode ? geo.detailCx : '50%' }}
-        >
-          <span className="tray-count">
-            <span className="tray-badge">{selCount}</span>건 선택됨
-          </span>
-          <button type="button" className="btn-ghost" onClick={clearSel}>
-            선택 해제
-          </button>
-          <button
-            type="button"
-            className="btn-brand"
-            onClick={() => openReport(null)}
-          >
-            <FileText size={14} aria-hidden="true" />
-            선택한 뉴스로 리포트 만들기
-          </button>
+      {compactHelp ? (
+        <details className="map-help is-compact">
+          <summary>조작 방법</summary>
+          {helpRows}
+        </details>
+      ) : (
+        <div className="map-help" aria-label="조작 방법">
+          {helpRows}
         </div>
       )}
-
-      <div className="map-help" aria-label="조작 방법">
-        <strong>클릭</strong>
-        <span>카드 선택·해제</span>
-        <strong>더블클릭</strong>
-        <span>가운데로 이동</span>
-        <strong>Space + 클릭</strong>
-        <span>그 카드 기준 검색 (하위 뉴스 펼치기·재검색)</span>
-        <strong>휠</strong>
-        <span>확대·축소</span>
-        <strong>끌기</strong>
-        <span>화면 이동</span>
-      </div>
 
       <button
         type="button"

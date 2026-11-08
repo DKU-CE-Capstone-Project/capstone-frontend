@@ -83,6 +83,9 @@ export type ApiMap = {
     last_attempt: Selection;
   }>;
   initial_selection: Selection;
+  next_issue?: { news_id: string; title: string } | null;
+  can_find_next_issue?: boolean;
+  previous_issue_map_id?: string | null;
   selected_news_ids: string[];
   detail_news_id: string | null;
   report_panel_open: boolean;
@@ -508,8 +511,14 @@ export function restoreNewsMap(): Promise<NewsMapData | null> {
   });
   return restoring;
 }
-export async function deleteMap(map: NewsMapData) {
-  await request('DELETE', `/maps/${encodeURIComponent(map.map_id)}`);
+export async function fetchPreviousIssueMap(map: NewsMapData) {
+  if (!map.previous_issue_map_id) throw new ServiceError('돌아갈 이전 뉴스맵이 없어요.');
+  const previous = await request<ApiMap>('GET', `/maps/${encodeURIComponent(map.previous_issue_map_id)}`);
+  return mapFromApi(previous, map.session);
+}
+export async function deleteMap(map: NewsMapData, includeIssues = false) {
+  const query = includeIssues ? '?include_issues=true' : '';
+  await request('DELETE', `/maps/${encodeURIComponent(map.map_id)}${query}`);
   forgetExistingMap(map.map_id);
 }
 function forgetExistingMap(mapId: string) {
@@ -635,6 +644,18 @@ export class NewsMapController {
         signal,
       ),
     );
+  }
+  openNextIssue() {
+    return this.serialize(async () => {
+      const map = this.state.map;
+      const next = await request<ApiMap>(
+        'POST',
+        `/maps/${encodeURIComponent(map.map_id)}/next-issue`,
+      );
+      return next.map_id === map.map_id
+        ? this.accept(next)
+        : mapFromApi(next, map.session);
+    });
   }
   update(fields: MapUpdate) {
     return this.serialize(async () => {

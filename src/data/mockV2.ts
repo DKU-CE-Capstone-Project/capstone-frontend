@@ -159,7 +159,7 @@ export async function mockV2Request(
     maps.set(id, map);
     return copy(map);
   }
-  const parts = path.split('/').filter(Boolean);
+  const parts = path.split('?')[0].split('/').filter(Boolean);
   if (parts[0] === 'maps') {
     const map = await owned(parts[1]);
     if (method === 'GET') return copy(map);
