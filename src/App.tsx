@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { createRef, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, FileText, Search } from 'lucide-react';
 import {
@@ -77,8 +77,11 @@ function App() {
     keywords: [],
   });
   const [newsMap, setNewsMap] = useState<NewsMapData | null>(null);
-  /** 같은 키워드를 다시 열어도 뉴스맵을 처음 상태로 새로 그린다. */
-  const [newsMapKey, setNewsMapKey] = useState(0);
+  /** 나가는 화면이 정리될 때 새 뉴스맵의 조작 참조를 지우지 않도록 화면마다 따로 둔다. */
+  const [{ key: newsMapKey, explorer }, setNewsMapView] = useState(() => ({
+    key: 0,
+    explorer: createRef<NewsMapExplorerHandle>(),
+  }));
   const [mapChrome, setMapChrome] = useState<NewsMapChrome>(INITIAL_CHROME);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   /** 뉴스맵 생성(POST /maps) 요청 토큰. Decision API 대기 동안 단계 문구를 바꾼다. */
@@ -89,7 +92,6 @@ function App() {
     DEFAULT_HOME_KEYWORDS,
   );
   const request = useRef(0);
-  const explorer = useRef<NewsMapExplorerHandle>(null);
   const mapRef = useRef<NewsMapData | null>(null);
   const updateMap = useCallback((map: NewsMapData) => {
     if (mapRef.current?.map_id !== map.map_id) return;
@@ -156,7 +158,10 @@ function App() {
   const showMap = (map: NewsMapData) => {
     mapRef.current = map;
     setNewsMap(map);
-    setNewsMapKey((k) => k + 1);
+    setNewsMapView(({ key }) => ({
+      key: key + 1,
+      explorer: createRef<NewsMapExplorerHandle>(),
+    }));
     setMapChrome(INITIAL_CHROME);
   };
 
