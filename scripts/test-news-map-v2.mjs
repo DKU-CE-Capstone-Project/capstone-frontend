@@ -248,6 +248,65 @@ test('API thumbnails reach news-map card and detail images without substituting 
   assert.doesNotMatch(html, /images\.unsplash\.com/);
 });
 
+const renderExplorer = (m) => renderToStaticMarkup(createElement(NewsMapExplorer, {
+  map: api.mapFromApi(m, session),
+  onExpired() {},
+  onMap() {},
+  onChrome() {},
+  onNextIssue() { assert.fail('the issue changed before a click'); },
+}));
+
+test('a root-only map renders the next issue offer without switching the center', () => {
+  const original = map({
+    nodes: map().nodes.slice(0, 1),
+    branches: [],
+    initial_selection: selection(0),
+    next_issue: { news_id: 'next', title: '다음 이슈 제목' },
+  });
+  const html = renderExplorer(original);
+  assert.match(html, /title-a/);
+  assert.match(html, /같은 검색어의 다른 이슈/);
+  assert.match(html, /다음 이슈 제목/);
+  assert.match(html, /다른 이슈 보기/);
+  assert.doesNotMatch(renderExplorer({ ...original, next_issue: null }), /다른 이슈 보기/);
+});
+
+test('a map with four related articles offers discovery without a known next title', () => {
+  const original = map({ can_find_next_issue: true, next_issue: null });
+  const html = renderExplorer(original);
+  for (const { news } of original.nodes) assert.ok(html.includes(news.title));
+  assert.match(html, /검색 결과에서 다른 주제를 찾아보세요/);
+  assert.match(html, /다른 이슈 보기/);
+  assert.doesNotMatch(renderExplorer({ ...original, can_find_next_issue: false }), /다른 이슈 보기/);
+});
+
+test('issue navigation POSTs only to open the next issue and GETs the previous map', async () => {
+  const original = map({ map_id: 'original', next_issue: { news_id: 'next', title: '다음' } });
+  const next = map({ map_id: 'next', previous_issue_map_id: 'original' });
+  server((c) => response(c.method === 'POST' ? next : original));
+  const c = controller(original);
+  api.rememberMap(c.state.map);
+  const alternate = await c.openNextIssue();
+  assert.equal(alternate.map_id, 'next');
+  assert.equal(JSON.parse(store.get('econmind.v2.navigation')).map_id, 'original');
+  assert.equal((await api.fetchPreviousIssueMap(alternate)).map_id, 'original');
+  assert.deepEqual(calls.map(({ method, path }) => [method, path]), [
+    ['POST', '/maps/original/next-issue'],
+    ['GET', '/maps/original'],
+  ]);
+});
+
+test('when no other issue is found, the controller updates the current map in place', async () => {
+  const original = map({ can_find_next_issue: true, selected_news_ids: ['a'] });
+  server(() => response({ ...original, revision: 2, can_find_next_issue: false }));
+  const c = controller(original);
+  const result = await c.openNextIssue();
+  assert.equal(result, c.state.map);
+  assert.equal(result.map_id, original.map_id);
+  assert.equal(result.can_find_next_issue, false);
+  assert.deepEqual(result.selected_news_ids, ['a']);
+});
+
 test('restores completed evidence for closed-map badges with GETs only', async () => {
   const saved = map({
     selected_news_ids: ['a'],

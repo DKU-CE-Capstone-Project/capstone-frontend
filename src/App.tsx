@@ -6,6 +6,7 @@ import {
   ServiceError,
   fetchKeywordMap,
   fetchNewsMap,
+  fetchPreviousIssueMap,
   fetchRecommendedKeywords,
   restoreNewsMap,
   deleteMap,
@@ -152,12 +153,11 @@ function App() {
     setScreen(nextScreen);
   };
 
-  /** 업데이터 안에서 setScreen 을 부르면 StrictMode 에서 두 번 실행되므로 상태 갱신을 분리한다. */
-  const goBack = () => {
-    ++request.current;
-    const previous = history[history.length - 1] ?? 'home';
-    setHistory((prev) => prev.slice(0, -1));
-    setScreen(previous);
+  const showMap = (map: NewsMapData) => {
+    mapRef.current = map;
+    setNewsMap(map);
+    setNewsMapKey((k) => k + 1);
+    setMapChrome(INITIAL_CHROME);
   };
 
   const dismissError = useCallback(() => setErrorMsg(null), []);
@@ -202,12 +202,9 @@ function App() {
         return;
       }
       const previous = mapRef.current;
-      mapRef.current = next;
-      setNewsMap(next);
+      showMap(next);
       if (previous && previous.map_id !== next.map_id)
-        void deleteMap(previous).catch(() => undefined);
-      setNewsMapKey((k) => k + 1);
-      setMapChrome(INITIAL_CHROME);
+        void deleteMap(previous, true).catch(() => undefined);
       navigate('newsMap');
     } catch (error) {
       if (current === request.current) {
@@ -224,6 +221,53 @@ function App() {
         setMapLoadKey(null);
       }
     }
+  };
+
+  const changeIssue = async (direction: 'next' | 'previous') => {
+    const before = mapRef.current;
+    const activeExplorer = explorer.current;
+    if (!before || loadingLabel || (direction === 'next' && !activeExplorer)) return;
+    const current = ++request.current;
+    setLoadingLabel(
+      direction === 'next'
+        ? '다른 이슈의 관련 뉴스를 모으는 중…'
+        : '이전 뉴스맵을 여는 중…',
+    );
+    setErrorMsg(null);
+    try {
+      const next =
+        direction === 'next' && activeExplorer
+          ? await activeExplorer.openNextIssue()
+          : await fetchPreviousIssueMap(before);
+      if (current !== request.current) return;
+      if (next.map_id === before.map_id) {
+        setErrorMsg('같은 검색어에서 다른 이슈를 찾지 못했어요.');
+        return;
+      }
+      rememberMap(next);
+      showMap(next);
+    } catch (error) {
+      if (current === request.current)
+        setErrorMsg(
+          error instanceof ServiceError
+            ? error.message
+            : '뉴스맵을 열지 못했어요. 다시 시도해 주세요.',
+        );
+    } finally {
+      if (current === request.current) setLoadingLabel(null);
+    }
+  };
+
+  const goBack = () => {
+    if (loadingLabel) return;
+    if (screen === 'newsMap' && mapRef.current?.previous_issue_map_id) {
+      void changeIssue('previous');
+      return;
+    }
+    ++request.current;
+    const previous = history[history.length - 1] ?? 'home';
+    setHistory((prev) => prev.slice(0, -1));
+    setScreen(previous);
   };
 
   /** 뉴스맵 생성 대기 취소. 토큰만 올리면 늦게 온 맵은 위의 분기에서 지워지고 화면은 그대로다. */
@@ -287,6 +331,10 @@ function App() {
                   onExpired={expired}
                   onMap={updateMap}
                   onChrome={setMapChrome}
+                  onNextIssue={() => {
+                    if (mapRef.current?.map_id === newsMap.map_id)
+                      void changeIssue('next');
+                  }}
                 />
               ) : (
                 <EmptyState
@@ -300,11 +348,17 @@ function App() {
 
         {screen !== 'home' && (
           <BottomControls
-            canGoBack={history.length > 0}
+            canGoBack={
+              !loadingLabel &&
+              (history.length > 0 || !!(onNewsMap && newsMap.previous_issue_map_id))
+            }
+            backLabel={onNewsMap && newsMap.previous_issue_map_id ? '이전 뉴스맵' : '뒤로가기'}
             onBack={goBack}
-            onSearch={() => navigate('home')}
+            onSearch={() => {
+              if (!loadingLabel) navigate('home');
+            }}
             onReport={() => explorer.current?.openReport()}
-            reportEnabled={onNewsMap}
+            reportEnabled={onNewsMap && !loadingLabel}
           />
         )}
 
@@ -516,12 +570,14 @@ function SearchResultsView({
 // ── BottomControls ───────────────────────────────────────────────────
 function BottomControls({
   canGoBack,
+  backLabel,
   onBack,
   onSearch,
   onReport,
   reportEnabled,
 }: {
   canGoBack: boolean;
+  backLabel: string;
   onBack: () => void;
   onSearch: () => void;
   onReport: () => void;
@@ -535,7 +591,7 @@ function BottomControls({
       transition={{ ...springSoft, delay: 0.12 }}
       aria-label="화면 컨트롤"
     >
-      <NavButton onClick={onBack} disabled={!canGoBack} label="뒤로가기">
+      <NavButton onClick={onBack} disabled={!canGoBack} label={backLabel}>
         <ArrowLeft aria-hidden="true" />
       </NavButton>
       <NavButton onClick={onReport} disabled={!reportEnabled} label="리포트">
