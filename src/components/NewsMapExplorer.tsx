@@ -296,11 +296,21 @@ export function NewsMapExplorer({
           return;
         }
         if (!next.map.root) return;
-        treeRef.current = treeFromMap(
-          next.map as ActiveNewsMap,
-          treeRef.current,
-        );
-        const t = treeRef.current;
+        const previousTree = treeRef.current!;
+        const t = treeFromMap(next.map as ActiveNewsMap, previousTree);
+        treeRef.current = t;
+        // 선택·리포트 상태만 바뀌면 정렬이 끝난 카드 위치를 유지한다.
+        const layoutChanged =
+          t.order.length !== previousTree.order.length ||
+          t.order.some((id, index) => {
+            const node = t.nodes[id];
+            const previous = previousTree.nodes[id];
+            return (
+              id !== previousTree.order[index] ||
+              node.parent !== previous.parent ||
+              node.news.id !== previous.news.id
+            );
+          });
         setSel(
           next.map.selected_news_ids
             .map(
@@ -326,7 +336,7 @@ export function NewsMapExplorer({
           setStatus(
             `리포트 준비 · 요청 ${next.report.coverage.requested_count}건, 사용 ${next.report.coverage.used_count}건, 실패 ${next.report.coverage.failed_count}건`,
           );
-        startSim();
+        if (layoutChanged) startSim();
       }),
     [controller, onExpired, onMap, startSim],
   );
@@ -754,12 +764,16 @@ export function NewsMapExplorer({
   const working =
     server.job &&
     ['queued', 'running', 'cancel_requested'].includes(server.job.status);
-  const selectionTray = selCount > 0 && !reportOpen && (
+  // 이슈 추천 아래 안내 영역의 높이를 고정해 선택할 때 캔버스가 밀리지 않게 한다.
+  const selectionTray = (showNextIssue || selCount > 0) && !reportOpen && (
     <div
       className="selection-tray"
       role="region"
       aria-label="선택한 뉴스"
-      style={{ left: detailNode ? geo.detailCx : '50%' }}
+      style={{
+        left: detailNode ? geo.detailCx : '50%',
+        visibility: selCount === 0 ? 'hidden' : undefined,
+      }}
     >
       <span className="tray-count">
         <span className="tray-badge">{selCount}</span>건 선택됨
