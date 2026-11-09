@@ -1466,6 +1466,17 @@ test('server node IDs cannot collide with local layout IDs or root alias', () =>
   assert.equal(t.order.length, 5);
 });
 
+test('the selection bar reduces the overview fit without moving the central article', () => {
+  const viewport = { width: 1254, height: 830 };
+  const controls = { top: 150, bottom: 734, selectionHeight: 0 };
+  const before = explorerGeometry(viewport, controls);
+  const after = explorerGeometry(viewport, { ...controls, selectionHeight: 58 });
+
+  assert.deepEqual([after.cx, after.cy], [before.cx, before.cy]);
+  assert.ok(after.overviewFitHeight < before.overviewFitHeight);
+  assert.ok(after.cy - after.overviewFitHeight / 2 >= controls.top + 58);
+});
+
 test('NewsMapExplorer centers camera at viewport midpoint by default and preserves sheet offsets', () => {
   const geo = explorerGeometry({ width: 1280, height: 832 });
   assert.equal(geo.cx, 640);

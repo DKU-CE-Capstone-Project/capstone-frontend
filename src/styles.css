@@ -463,16 +463,15 @@ p {
 .news-explorer {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  overflow: clip;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .explorer-viewport {
-  position: relative;
-  grid-row: 2;
-  overflow: hidden;
+  position: absolute;
+  inset: 0;
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -870,22 +869,43 @@ p {
   padding: 0 var(--space-4);
 }
 
+.screen-newsMap .header-bar,
+.news-map-dock,
+.news-map-selection {
+  pointer-events: none;
+}
+
+.screen-newsMap .header-bar > *,
+.next-issue-offer,
+.premium-preview,
+.selection-tray {
+  pointer-events: auto;
+}
+
 .is-overview .news-map-dock {
+  position: relative;
+  z-index: 15;
   grid-row: 1;
   display: grid;
+  align-self: start;
   justify-items: center;
   gap: var(--space-2);
   padding: calc(var(--space-16) + var(--space-2)) var(--space-6) var(--space-3);
 }
 
-.is-overview .explorer-viewport {
-  /* 하단 탐색 버튼은 캔버스 바깥에 둔다. */
-  margin-block-end: calc(2 * var(--space-12));
+.is-overview .news-map-selection {
+  grid-row: 2;
+  z-index: 25;
+  display: grid;
+  align-self: start;
+  justify-items: center;
+  padding-inline: var(--space-3);
 }
 
-.is-overview .news-map-dock .selection-tray {
+.is-overview .selection-tray {
   position: static;
   transform: none;
+  margin-block-start: var(--space-2);
   max-width: 100%;
   flex-wrap: wrap;
   justify-content: center;
@@ -960,26 +980,61 @@ p {
   .is-overview .news-map-dock .premium-preview button {
     display: none;
   }
-
-  .is-overview .news-map-dock .selection-tray {
-    grid-row: 2;
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 580px) {
   .is-overview .news-map-dock {
     grid-template-columns: minmax(0, 1fr) 140px;
+    padding-block: calc(var(--space-12) + var(--space-3)) var(--space-2);
   }
 
   .next-issue-offer {
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-2);
-    padding: var(--space-3);
+    gap: var(--space-1);
+    padding: var(--space-2);
   }
 
   .next-issue-offer button {
+    min-height: 36px;
     padding-inline: var(--space-2);
+  }
+}
+
+@media (max-width: 580px), (min-width: 640px) and (max-width: 1023px) and (max-height: 500px) {
+  .is-overview .selection-tray {
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .is-overview .selection-tray button {
+    padding-inline: var(--space-2);
+  }
+
+  .is-overview .tray-report-prefix {
+    display: none;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) and (max-height: 500px) {
+  /* 높이가 낮은 화면에서는 선택 바를 추천 옆에 놓아 지도 높이를 확보한다. */
+  .news-explorer.is-overview {
+    grid-template-columns: minmax(0, 1fr) 272px;
+  }
+
+  .is-overview .news-map-dock {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) 140px;
+    padding-inline-end: var(--space-3);
+  }
+
+  .is-overview .news-map-selection {
+    grid-row: 1;
+    grid-column: 2;
+    padding: calc(var(--space-16) + var(--space-2)) var(--space-3) 0 0;
+  }
+
+  .is-overview .selection-tray {
+    margin-block-start: 0;
   }
 }
 
