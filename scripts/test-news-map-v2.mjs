@@ -1417,6 +1417,28 @@ test('storage denial keeps API navigation usable without copying state elsewhere
   assert.equal((await api.fetchNewsMap('query')).map_id, 'map');
   assert.doesNotThrow(() => api.forgetMap());
 });
+test('the initial overview fits asymmetric results around the centered root', () => {
+  const payload = map();
+  payload.nodes.pop();
+  payload.branches[0].child_node_ids.pop();
+  const layout = tree.treeFromMap(api.mapFromApi(payload, session));
+  const velocity = {};
+  for (let i = 0; i < 60; i++) tree.stepLayout(layout, velocity);
+
+  for (const viewport of [{ width: 1254, height: 526 }, { width: 390, height: 394 }]) {
+    const zoom = tree.rootOverviewZoom(layout, viewport);
+    assert.ok(zoom < 1);
+    for (const node of Object.values(layout.nodes)) {
+      const radius = tree.sizeOf(node) / 2;
+      assert.ok((Math.abs(node.x) + radius) * zoom <= viewport.width / 2);
+      assert.ok((Math.abs(node.y) + radius) * zoom <= viewport.height / 2);
+    }
+    assert.ok(tree.ROOT_ORBIT.rx * zoom < viewport.width / 2);
+    assert.ok(tree.ROOT_ORBIT.ry * zoom < viewport.height / 2);
+  }
+  assert.equal(tree.rootOverviewZoom(layout, { width: 1500, height: 900 }), 1);
+});
+
 test('server node IDs cannot collide with local layout IDs or root alias', () => {
   const m = map();
   m.nodes[1].node_id = 'root';

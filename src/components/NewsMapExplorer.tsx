@@ -43,6 +43,7 @@ import {
   edgePaths,
   miniMap,
   ringPaths,
+  rootOverviewZoom,
   shortTitle,
   sizeOf,
   stepLayout,
@@ -104,7 +105,7 @@ const REPORT_WIDTH = 720;
 const RING_OPACITY = [0.95, 0.5, 0.28, 0.16, 0.1, 0.07];
 const RING_WIDTH = [1.8, 1.4, 1.2, 1.1, 1, 1];
 
-type Camera = { focus: string; uz: number; pan: Vec };
+type Camera = { focus: string; uz: number | null; pan: Vec };
 type Viewport = { width: number; height: number };
 
 type Drag = {
@@ -126,7 +127,13 @@ function resolveCamera(tree: MapTree, camera: Camera, viewport: Viewport) {
   const focus = tree.nodes[camera.focus] ?? tree.nodes.root;
   const lim = zoomLimits(tree, focus, viewport);
   const base = zoomFor(focus);
-  const zoom = clamp(lim.min, base * camera.uz, lim.max);
+  const overviewZoom = focus.level === 0 ? rootOverviewZoom(tree, viewport) : base;
+  lim.min = Math.min(lim.min, overviewZoom);
+  const zoom = clamp(
+    lim.min,
+    camera.uz === null ? overviewZoom : base * camera.uz,
+    lim.max,
+  );
   const pan = clampPan(camera.pan, zoom, focus, tree);
   return { focus, lim, base, zoom, pan };
 }
@@ -168,6 +175,14 @@ export function NewsMapExplorer({
   orbitSpeed?: number;
 }) {
   const { ref: viewportRef, size } = useFieldSize();
+  const viewportMeasured = size.width > 0 && size.height > 0;
+  const [cameraTransitionReady, setCameraTransitionReady] = useState(false);
+  useEffect(() => {
+    if (!viewportMeasured) return;
+    // 첫 위치는 임시 크기에서 애니메이션하지 않고 실제 캔버스에 바로 그린다.
+    const frame = requestAnimationFrame(() => setCameraTransitionReady(true));
+    return () => cancelAnimationFrame(frame);
+  }, [viewportMeasured]);
   const viewport: Viewport = {
     width: size.width || 1280,
     height: size.height || 832,
@@ -182,7 +197,7 @@ export function NewsMapExplorer({
 
   const [camera, setCamera] = useState<Camera>({
     focus: 'root',
-    uz: 1,
+    uz: null,
     pan: { x: 0, y: 0 },
   });
   const [dragging, setDragging] = useState(false);
@@ -358,7 +373,7 @@ export function NewsMapExplorer({
   const center = (id: string) => {
     const n = tree.nodes[id];
     if (!n) return;
-    setCamera({ focus: id, uz: 1, pan: { x: 0, y: 0 } });
+    setCamera({ focus: id, uz: null, pan: { x: 0, y: 0 } });
     setStatus(`‘${shortTitle(n.news.title)}’ 을 가운데로 옮겼어요`);
   };
   const openDetail = (id: string) => {
@@ -422,7 +437,7 @@ export function NewsMapExplorer({
         velRef.current = {};
         loadingRef.current = null;
         setLoadingId(null);
-        setCamera({ focus: 'root', uz: 1, pan: { x: 0, y: 0 } });
+        setCamera({ focus: 'root', uz: null, pan: { x: 0, y: 0 } });
         setStatus('처음 뉴스맵으로 돌아왔어요');
         startSim();
       }),
@@ -553,9 +568,10 @@ export function NewsMapExplorer({
         // 이미 놓은 포인터면 캡처 없이 계속한다
       }
     }
-    const { focus, zoom } = resolveCamera(tree, camera, viewport);
+    const { focus, base, zoom } = resolveCamera(tree, camera, viewport);
     setCamera((c) => ({
       ...c,
+      uz: zoom / base,
       pan: clampPan({ x: d.px + dx, y: d.py + dy }, zoom, focus, tree),
     }));
     setDragging(true);
@@ -646,7 +662,7 @@ export function NewsMapExplorer({
     };
 
   // ── 그리기 값 ────────────────────────────────────────────────────
-  const { focus, zoom, pan } = resolveCamera(tree, camera, viewport);
+  const { focus, base, zoom, pan } = resolveCamera(tree, camera, viewport);
   const focusId = focus.id;
   const focusAnc = ancestors(tree, focusId);
   const liveSel = sel.filter((k) => tree.nodes[k]);
@@ -700,7 +716,7 @@ export function NewsMapExplorer({
       ? // 상세: 카드가 패널 왼쪽 영역 가운데에서 300px로 보이도록 확대
         `translate(${geo.detailCx}px, ${geo.cy}px) scale(${(300 / sizeOf(detailNode)).toFixed(4)}) translate(${(-detailNode.x).toFixed(2)}px, ${(-detailNode.y).toFixed(2)}px)`
       : `translate(${(geo.cx + pan.x).toFixed(1)}px, ${(geo.cy + pan.y).toFixed(1)}px) scale(${zoom.toFixed(4)}) translate(${(-focus.x).toFixed(2)}px, ${(-focus.y).toFixed(2)}px)`);
-  const camTransition = dragging
+  const camTransition = !cameraTransitionReady || dragging
     ? 'none'
     : wheeling
       ? 'transform 90ms linear'
@@ -719,6 +735,7 @@ export function NewsMapExplorer({
     const wy = mini.y0 + (((e.clientY - r.top) / r.height) * 120) / mini.scale;
     setCamera((c) => ({
       ...c,
+      uz: zoom / base,
       pan: clampPan(
         { x: -zoom * (wx - focus.x), y: -zoom * (wy - focus.y) },
         zoom,
@@ -842,7 +859,11 @@ export function NewsMapExplorer({
       >
         <div
           className="explorer-camera"
-          style={{ transform: camTransform, transition: camTransition }}
+          style={{
+            transform: camTransform,
+            transition: camTransition,
+            visibility: viewportMeasured ? undefined : 'hidden',
+          }}
         >
           <svg
             className="explorer-lines"

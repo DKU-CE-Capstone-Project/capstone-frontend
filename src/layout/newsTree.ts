@@ -322,7 +322,7 @@ export function stepLayout(tree: MapTree, vel: Record<string, Vec>): number {
 // ── 카메라 범위 ────────────────────────────────────────────────────
 
 /** 뉴스 카드 전체를 감싸는 사각형과 가장 작은 카드 크기 */
-export function treeBounds(tree: MapTree): Bounds {
+export function treeBounds(tree: MapTree, maxLevel = Infinity): Bounds {
   const b: Bounds = {
     x0: Infinity,
     x1: -Infinity,
@@ -332,6 +332,7 @@ export function treeBounds(tree: MapTree): Bounds {
   };
   for (const id of tree.order) {
     const n = tree.nodes[id];
+    if (n.level > maxLevel) continue;
     const s = sizeOf(n);
     b.x0 = Math.min(b.x0, n.x - s / 2);
     b.x1 = Math.max(b.x1, n.x + s / 2);
@@ -340,6 +341,22 @@ export function treeBounds(tree: MapTree): Bounds {
     b.minSize = Math.min(b.minSize, s);
   }
   return b;
+}
+
+/** 중심을 고정하고 중앙 기사와 첫 궤도가 캔버스에 들어오는 기본 배율. */
+export function rootOverviewZoom(
+  tree: MapTree,
+  { width, height }: { width: number; height: number },
+): number {
+  const { x0, x1, y0, y1 } = treeBounds(tree, 1);
+  const halfWidth = Math.max(-x0, x1, ROOT_ORBIT.rx);
+  const halfHeight = Math.max(-y0, y1, ROOT_ORBIT.ry);
+  const padding = Math.min(16, width / 4, height / 4);
+  return Math.min(
+    1,
+    (width / 2 - padding) / halfWidth,
+    (height / 2 - padding) / halfHeight,
+  );
 }
 
 /**
