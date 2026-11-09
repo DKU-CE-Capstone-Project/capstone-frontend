@@ -7,6 +7,7 @@ import {
   type MockKeywordMap,
 } from './mockNewsMap';
 import { mockV2Request } from './mockV2';
+import type { AgentTrace, Claim, Debate, ImpactDirection, Verification } from './reportAgents';
 
 export type KeywordMapNodeMeta = {
   keyword: string;
@@ -109,7 +110,10 @@ export type ReportJob = {
     | 'queued'
     | 'extracting'
     | 'analyzing'
+    | 'debating'
+    | 'judging'
     | 'verifying'
+    | 'revising'
     | 'strategy'
     | 'saving'
     | 'done';
@@ -143,8 +147,9 @@ export type ApiReport = {
     ticker: string | null;
     name: string;
     impact: string;
-    direction: 'up' | 'down' | 'mixed' | 'unknown';
+    direction: ImpactDirection;
     evidence_news_ids: string[];
+    claim_ids?: string[] | null;
   }>;
   risk_factors: string[];
   requested_news_ids: string[];
@@ -177,10 +182,10 @@ export type ApiReport = {
     description: string;
     description_hash: string;
   }>;
-  verification: {
-    status: 'passed' | 'warning' | 'unavailable';
-    notes: string[];
-  };
+  verification: Verification;
+  claims?: Claim[] | null;
+  debate?: Debate[] | null;
+  agent_trace?: AgentTrace[] | null;
   created_at: string;
 };
 export type ApiStrategy = {
@@ -197,6 +202,7 @@ export type ApiStrategy = {
     action: 'buy' | 'hold' | 'sell' | 'watch';
     reason: string;
   }>;
+  agent_trace?: AgentTrace[] | null;
   created_at: string;
 };
 export type V2Report = Omit<Report, 'stockImpacts' | 'strategySummary'> & {
@@ -210,6 +216,10 @@ export type V2Report = Omit<Report, 'stockImpacts' | 'strategySummary'> & {
   ragEvidence: ApiReport['rag_evidence'];
   coverage: ApiReport['coverage'];
   verification: ApiReport['verification'];
+  claims: Claim[];
+  debate: Debate[];
+  reportTrace: AgentTrace[];
+  strategyTrace: AgentTrace[];
   warnings: string[];
 };
 export type NewsMapData = ApiMap & {
@@ -377,6 +387,10 @@ export function reportFromApi(
     ragEvidence: report.rag_evidence,
     coverage: report.coverage,
     verification: report.verification,
+    claims: report.claims ?? [],
+    debate: report.debate ?? [],
+    reportTrace: report.agent_trace ?? [],
+    strategyTrace: strategy?.agent_trace ?? [],
     warnings,
   };
 }
@@ -545,7 +559,7 @@ export function phaseOf(stage: ReportJob['stage']): ReportPhase {
     ? 3
     : ['strategy', 'saving'].includes(stage)
       ? 2
-      : ['analyzing', 'verifying'].includes(stage)
+      : ['analyzing', 'debating', 'judging', 'verifying', 'revising'].includes(stage)
         ? 1
         : 0;
 }
@@ -553,7 +567,10 @@ export const STAGE_LABEL: Record<ReportJob['stage'], string> = {
   queued: '작업 대기',
   extracting: '본문 추출',
   analyzing: '사건·시장 영향 분석',
+  debating: '강세·약세 분석',
+  judging: '중재 판정',
   verifying: '근거 검증',
+  revising: '주장 수정·재검증',
   strategy: '전략 생성',
   saving: '결과 저장',
   done: '작업 종료',

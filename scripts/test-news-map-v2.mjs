@@ -34,6 +34,9 @@ const viewDir = await mkdtemp(join(process.cwd(), 'node_modules', '.econmind-v2-
 await build({
   entryPoints: [
     'src/components/NewsMapExplorer.tsx',
+    'src/components/AgentProgress.tsx',
+    'src/components/AgentTimeline.tsx',
+    'src/components/VerificationCard.tsx',
     'src/components/KeywordMap.tsx',
     'src/layout/mapLayout.ts',
   ],
@@ -46,6 +49,9 @@ await build({
   define: { 'import.meta.env': '{}' },
 });
 const { NewsMapExplorer, geometry: explorerGeometry } = await import(pathToFileURL(join(viewDir, 'components/NewsMapExplorer.js')));
+const { AgentProgress } = await import(pathToFileURL(join(viewDir, 'components/AgentProgress.js')));
+const { AgentTimeline } = await import(pathToFileURL(join(viewDir, 'components/AgentTimeline.js')));
+const { VerificationCard } = await import(pathToFileURL(join(viewDir, 'components/VerificationCard.js')));
 const { KeywordMap } = await import(pathToFileURL(join(viewDir, 'components/KeywordMap.js')));
 const mapLayout = await import(pathToFileURL(join(viewDir, 'layout/mapLayout.js')));
 const originalFetch = globalThis.fetch;
@@ -426,6 +432,129 @@ test('home recommendations stay offline and mock mode keeps keyword maps offline
   assert.ok((await api.fetchRecommendedKeywords()).length);
   assert.ok((await mockApi.fetchKeywordMap('환율')).keywords.includes('환율'));
 });
+test('browser mock reuses separate next-issue maps and restores selection on return', async () => {
+  server(() => assert.fail('mock issue navigation must not call live API'));
+  const initial = await mockApi.fetchNewsMap('반도체');
+  assert.equal(initial.initial_selection.returned, 4);
+  assert.ok(initial.next_issue);
+
+  const explorer = new mockApi.NewsMapController(initial);
+  await explorer.select(initial.root.id);
+  const [second, repeated] = await Promise.all([
+    explorer.openNextIssue(),
+    mockApi.request('POST', `/maps/${initial.map_id}/next-issue`),
+  ]);
+  assert.equal(second.map_id, repeated.map_id);
+  assert.notEqual(second.map_id, initial.map_id);
+  assert.equal(second.keyword, initial.keyword);
+  assert.equal(second.root.id, initial.next_issue.news_id);
+  assert.equal(second.previous_issue_map_id, initial.map_id);
+  assert.deepEqual(second.selected_news_ids, []);
+
+  const secondExplorer = new mockApi.NewsMapController(second);
+  await secondExplorer.select(second.root.id);
+  const third = await secondExplorer.openNextIssue();
+  assert.notEqual(third.root.id, second.root.id);
+  assert.equal(third.previous_issue_map_id, second.map_id);
+  assert.equal(third.can_find_next_issue, false);
+  const previous = await mockApi.fetchPreviousIssueMap(third);
+  assert.deepEqual(previous.selected_news_ids, [second.root.id]);
+  assert.deepEqual((await mockApi.fetchPreviousIssueMap(previous)).selected_news_ids, [initial.root.id]);
+  assert.deepEqual((await explorer.openNextIssue()).selected_news_ids, [second.root.id]);
+
+  const reset = await secondExplorer.reset();
+  assert.equal(reset.root.id, second.root.id);
+  assert.equal(reset.previous_issue_map_id, initial.map_id);
+  assert.deepEqual(reset.selected_news_ids, []);
+
+  const independent = await mockApi.fetchNewsMap('반도체');
+  await mockApi.deleteMap(third, true);
+  for (const id of [initial.map_id, second.map_id, third.map_id]) {
+    await assert.rejects(mockApi.request('GET', `/maps/${id}`), { status: 404 });
+  }
+  assert.equal((await mockApi.request('GET', `/maps/${independent.map_id}`)).map_id, independent.map_id);
+});
+
+test('WP0 mock reports follow the contracted stages and resolve citations to selected articles', async () => {
+  server(() => assert.fail('WP0 mock must not call live API'));
+  const stages = ['queued', 'extracting', 'debating', 'judging', 'verifying', 'revising', 'saving', 'strategy', 'done'];
+  for (const [query, direction] of [['반도체', 'up'], ['검증혼합', 'mixed']]) {
+    const map = await mockApi.request('POST', '/maps', { query });
+    const newsIds = map.nodes.slice(0, 2).map((node) => node.news_id);
+    const requestId = crypto.randomUUID();
+    let job = await mockApi.request('POST', '/report-jobs', {
+      map_id: map.map_id,
+      expected_revision: map.revision,
+      client_request_id: requestId,
+      news_ids: newsIds,
+    }, undefined, requestId);
+    const expected = direction === 'mixed' ? stages.filter((stage) => stage !== 'revising') : stages;
+    assert.equal(job.stage, expected[0]);
+    for (const stage of expected.slice(1)) {
+      job = await mockApi.request('GET', `/report-jobs/${job.job_id}`);
+      assert.equal(job.stage, stage);
+    }
+    const rawReport = await mockApi.request('GET', `/reports/${job.result.report_id}`);
+    const strategy = await mockApi.request('GET', `/strategies/${job.result.strategy_id}`);
+    const result = api.reportFromApi(rawReport, strategy);
+    assert.equal(result.debate[0].direction, direction);
+    assert.deepEqual(result.debate[0].evidence_news_ids, direction === 'mixed' ? newsIds : newsIds.slice(0, 1));
+    assert.equal(result.reportTrace[0].agent, 'bull');
+    assert.equal(result.strategyTrace[0].agent, 'strategy');
+    if (direction === 'up') {
+      assert.equal(result.claims[0].evidence[0].news_id, newsIds[0]);
+      assert.deepEqual(result.stockImpacts[0].claim_ids, ['c1']);
+      assert.equal(result.verification.revision.rounds[0].changes[0].action, 'removed');
+    }
+  }
+});
+
+test('legacy and null API fields keep optional agent views empty and legacy progress usable', () => {
+  for (const value of [undefined, null]) {
+    const result = api.reportFromApi(report({ claims: value, debate: value, agent_trace: value }), null);
+    assert.deepEqual([result.claims, result.debate, result.reportTrace, result.strategyTrace], [[], [], [], []]);
+    assert.equal(renderToStaticMarkup(createElement(AgentTimeline, result)), '');
+  }
+  const legacy = renderToStaticMarkup(createElement(AgentProgress, { stage: 'analyzing' }));
+  assert.match(legacy, /사건·시장 영향 분석 및 검증/);
+  assert.doesNotMatch(legacy, /강세 분석/);
+  const parallel = renderToStaticMarkup(createElement(AgentProgress, { stage: 'debating' }));
+  assert.match(parallel, /aria-current="step".*병렬 분석.*강세 분석.*약세 분석/);
+  for (const stage of ['debating', 'judging', 'revising']) assert.equal(api.phaseOf(stage), 1);
+});
+
+test('verification card summarizes warnings and adopted revisions while keeping details collapsed', () => {
+  const change = { claim_id: 'c2', action: 'removed', before_text: '삭제 전 주장' };
+  const rounds = [
+    { round: 1, before: 2, after: 1, decision: 'adopted', targets: ['c2'], changes: [change] },
+    { round: 2, before: 1, after: 0, decision: 'kept_original', targets: ['c3'], changes: [] },
+  ];
+  const renderCard = (status, revision, claimsSummary) => {
+    const result = api.reportFromApi(report({ verification: {
+      status, notes: ['경고'], revision, claims_summary: claimsSummary,
+    } }), null);
+    return renderToStaticMarkup(createElement(VerificationCard, { report: result }));
+  };
+  const unmodified = renderCard('warning', { adopted: false, attempts: 0, rounds: [] });
+  assert.match(unmodified, /경고 1건/);
+  assert.doesNotMatch(unmodified, /수정완료/);
+  const revised = { adopted: true, attempts: 2, rounds };
+  const partial = renderCard('warning', revised);
+  assert.match(partial, /수정완료.*경고 2건 → 1건/);
+  assert.match(partial, /aria-expanded="false"[^>]*>펼치기/);
+  assert.match(partial, /hidden="">.*c2 · 삭제 · 삭제 전 주장/);
+  assert.match(partial, /2차 · 원본 유지/);
+  const resolved = renderCard('passed', {
+    ...revised,
+    rounds: [rounds[0], { ...rounds[1], decision: 'adopted' }],
+  }, {
+    total: 1, supported: 1, refuted: 0, unclear: 0, sentence_missing: 0,
+  });
+  assert.match(resolved, /수정완료.*경고 2건 → 0건.*전체 1건 · 지지 1건/);
+  assert.match(renderCard('passed'), /경고 0건.*검증 통과/);
+  assert.doesNotMatch(renderCard('unavailable'), /경고 \d/);
+});
+
 test('fetchKeywordMap calls /api/v1/keywords/map, preserves grounded nodes, and surfaces 429 Retry-After', async () => {
   await assert.rejects(api.fetchKeywordMap('   '), (error) => {
     assert.equal(error.status, 422);

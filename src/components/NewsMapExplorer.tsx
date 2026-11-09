@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import type { NewsCard } from '../data/mockData';
+import { DIRECTION_LABEL } from '../data/reportAgents';
 import { evidenceStatus, numberEvidence } from '../data/reportEvidence';
 import {
   USE_MOCK,
@@ -33,7 +34,6 @@ import {
   type ActiveNewsMap,
   type ControllerState,
   type NewsMapData,
-  type V2Report,
 } from '../data/newsMapService';
 import {
   ancestors,
@@ -54,6 +54,10 @@ import {
 } from '../layout/newsTree';
 import { useFieldSize } from '../layout/useFieldScale';
 import { useLoadingStage } from './loadingStage';
+import { AgentProgress } from './AgentProgress';
+import { AgentTimeline } from './AgentTimeline';
+import { DebateCard } from './DebateCard';
+import { VerificationCard } from './VerificationCard';
 import { CitationChips } from './CitationChips';
 import { EvidenceChain } from './EvidenceChain';
 import {
@@ -99,16 +103,6 @@ const REPORT_WIDTH = 720;
 
 const RING_OPACITY = [0.95, 0.5, 0.28, 0.16, 0.1, 0.07];
 const RING_WIDTH = [1.8, 1.4, 1.2, 1.1, 1, 1];
-
-const DIRECTION_LABEL: Record<
-  V2Report['stockImpacts'][number]['direction'],
-  string
-> = {
-  up: '상승 요인',
-  down: '하락 요인',
-  mixed: '혼조',
-  unknown: '방향 확인 불가',
-};
 
 type Camera = { focus: string; uz: number; pan: Vec };
 type Viewport = { width: number; height: number };
@@ -752,11 +746,11 @@ export function NewsMapExplorer({
 
   const evidence = liveSel.map((k) => tree.nodes[k]);
   const reportReady = reportPhase >= 3 && report !== null;
-  const steps = [
-    '본문 추출',
-    '사건·시장 영향 분석 및 검증',
-    '전략 생성 및 저장',
-  ];
+  const hasVerificationDetails = reportReady && (
+    report.claims.length > 0 ||
+    report.verification.claims_summary != null ||
+    report.verification.revision != null
+  );
   const working =
     server.job &&
     ['queued', 'running', 'cancel_requested'].includes(server.job.status);
@@ -1180,6 +1174,7 @@ export function NewsMapExplorer({
         </div>
 
         <div className="report-sheet-body">
+          {hasVerificationDetails && <VerificationCard key={report.id} report={report} />}
           <section className="report-evidence" aria-label="근거 뉴스">
             <h3>근거 뉴스</h3>
             {evidence.map((n, i) => (
@@ -1276,32 +1271,21 @@ export function NewsMapExplorer({
               )}
             </section>
           )}
-          {!reportReady && working && (
-            <section
-              className="report-steps"
-              role="status"
-              aria-label="리포트 생성 중"
-            >
-              {steps.map((label, i) => (
-                <div
-                  key={label}
-                  className={`report-step${reportPhase >= i ? ' is-reached' : ''}`}
-                >
-                  {reportPhase > i && (
-                    <span className="step-done">
-                      <Check size={13} strokeWidth={3} aria-hidden="true" />
-                    </span>
-                  )}
-                  {reportPhase === i && <span className="step-active" />}
-                  {reportPhase < i && <span className="step-wait" />}
-                  <span>{label}</span>
-                </div>
-              ))}
-            </section>
+          {!reportReady && working && server.job && (
+            <AgentProgress key={server.job.job_id} stage={server.job.stage} />
           )}
 
           {reportReady && report && (
             <>
+              <AgentTimeline
+                reportTrace={report.reportTrace}
+                strategyTrace={report.strategyTrace}
+                coverage={report.coverage}
+                isExample={USE_MOCK}
+                reportReused={
+                  server.job?.result?.report_id === report.id && server.job.result.report_reused
+                }
+              />
               <section className="report-text">
                 <h3>사건 요약</h3>
                 <p>{report.eventSummary}</p>
@@ -1339,6 +1323,20 @@ export function NewsMapExplorer({
                   </article>
                 ))}
               </section>
+              {report.debate.length > 0 && (
+                <section className="report-text">
+                  <h3>종목별 에이전트 토론</h3>
+                  {report.debate.map((debate, index) => (
+                    <DebateCard
+                      key={`${debate.name}-${index}`}
+                      debate={debate}
+                      evidence={report.evidence}
+                      numbers={evidenceNumbers}
+                      onSelectEvidence={showEvidence}
+                    />
+                  ))}
+                </section>
+              )}
               {/* 전략 성과 차트는 실제 시세·백테스트 데이터가 없어 표시하지 않는다 (docs/10 D5) */}
               {report.strategySummary && (
                 <section className="report-strategy">

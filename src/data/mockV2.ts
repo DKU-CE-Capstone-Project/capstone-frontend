@@ -14,6 +14,12 @@ import type {
   Session,
   Selection,
 } from './newsMapService';
+import {
+  MOCK_MIXED_DEBATE_QUERY,
+  mockAgentStages,
+  mockReportAgents,
+  mockStrategyTrace,
+} from './mockReportAgents';
 import type { NewsCard } from './mockData';
 // Local prototype defaults to multi-selection; API capabilities remain server-owned.
 const fixtureTier: Session['prototype_tier'] =
@@ -24,7 +30,14 @@ const fixtureTier: Session['prototype_tier'] =
 const now = () => new Date().toISOString();
 const expiry = () => new Date(Date.now() + 24 * 3600_000).toISOString();
 let session: Session | null = null;
-const maps = new Map<string, ApiMap>();
+type MockMap = {
+  map: ApiMap;
+  initialArticles: NewsCard[];
+  issueCandidates: NewsCard[];
+  searchId: string;
+  nextMapId?: string;
+};
+const maps = new Map<string, MockMap>();
 const jobs = new Map<string, ReportJob>();
 const reports = new Map<string, ApiReport>();
 const strategies = new Map<string, ApiStrategy>();
@@ -50,6 +63,64 @@ const selection = (requested: number, returned: number): Selection => ({
   reason: returned < requested ? 'no_eligible_related' : null,
   budget_exhausted: false,
 });
+function initialMapContent(articles: NewsCard[]) {
+  const rootId = `fixture-node-${seq++}`;
+  const nodes = articles.map((news, index) => ({
+    node_id: index === 0 ? rootId : `fixture-node-${seq++}`,
+    news_id: news.id,
+    parent_node_id: index === 0 ? null : rootId,
+    level: index === 0 ? 0 : 1,
+    expanded: index === 0,
+    batch: 0,
+    news: card(news),
+  }));
+  const initialSelection = selection(4, nodes.length - 1);
+  return {
+    root_node_id: rootId,
+    nodes,
+    branches: [{
+      parent_node_id: rootId,
+      child_node_ids: nodes.slice(1).map((node) => node.node_id),
+      display_selection: initialSelection,
+      last_attempt: initialSelection,
+    }],
+    initial_selection: initialSelection,
+    selected_news_ids: [],
+    detail_news_id: null,
+    report_panel_open: false,
+    active_report_job_id: null,
+    last_result: null,
+  };
+}
+
+function createMap(
+  query: string,
+  initialArticles: NewsCard[],
+  issueCandidates: NewsCard[],
+  previous?: MockMap,
+) {
+  const id = crypto.randomUUID();
+  const next = issueCandidates[0];
+  const map: ApiMap = {
+    map_id: id,
+    revision: 1,
+    query,
+    state: 'active',
+    ...initialMapContent(initialArticles),
+    next_issue: next ? { news_id: next.id, title: next.title } : null,
+    can_find_next_issue: !!next,
+    previous_issue_map_id: previous?.map.map_id ?? null,
+    expires_at: expiry(),
+  };
+  maps.set(id, {
+    map,
+    initialArticles,
+    issueCandidates,
+    searchId: previous?.searchId ?? id,
+  });
+  return map;
+}
+
 async function fail(
   status: number,
   code: string,
@@ -121,52 +192,43 @@ export async function mockV2Request(
   if (!session) await mockV2Request('GET', '/session');
   if (path === '/maps' && method === 'POST') {
     const source = await fetchMockNewsMap(body!.query);
-    const id = crypto.randomUUID();
-    const items = [source.root, ...source.related];
-    const nodes = items.map((news, i) => ({
-      node_id: `fixture-node-${seq++}`,
-      news_id: news.id,
-      parent_node_id: null as string | null,
-      level: i ? 1 : 0,
-      expanded: !i,
-      batch: 0,
-      news: card(news),
-    }));
-    for (const n of nodes.slice(1)) n.parent_node_id = nodes[0].node_id;
-    const map: ApiMap = {
-      map_id: id,
-      revision: 1,
-      query: body!.query,
-      state: 'active',
-      root_node_id: nodes[0].node_id,
-      nodes,
-      branches: [
-        {
-          parent_node_id: nodes[0].node_id,
-          child_node_ids: nodes.slice(1).map((n) => n.node_id),
-          display_selection: selection(4, nodes.length - 1),
-          last_attempt: selection(4, nodes.length - 1),
-        },
-      ],
-      initial_selection: selection(4, nodes.length - 1),
-      selected_news_ids: [],
-      detail_news_id: null,
-      report_panel_open: false,
-      active_report_job_id: null,
-      last_result: null,
-      expires_at: expiry(),
-    };
-    maps.set(id, map);
-    return copy(map);
+    return copy(createMap(
+      body!.query,
+      [source.root, ...source.related],
+      source.related.slice(0, 2),
+    ));
   }
-  const parts = path.split('?')[0].split('/').filter(Boolean);
+  const [pathname, query] = path.split('?');
+  const parts = pathname.split('/').filter(Boolean);
   if (parts[0] === 'maps') {
-    const map = await owned(parts[1]);
+    const fixture = await owned(parts[1]);
+    const { map } = fixture;
     if (method === 'GET') return copy(map);
     if (method === 'DELETE') {
-      detached(map);
-      maps.delete(map.map_id);
+      const includeIssues = new URLSearchParams(query).get('include_issues') === 'true';
+      for (const [id, entry] of maps) {
+        if (id === map.map_id || (includeIssues && entry.searchId === fixture.searchId)) {
+          detached(entry.map);
+          maps.delete(id);
+        }
+      }
       return;
+    }
+    if (method === 'POST' && parts[2] === 'next-issue') {
+      const saved = fixture.nextMapId && maps.get(fixture.nextMapId);
+      if (saved) return copy(saved.map);
+
+      const [center, ...remaining] = fixture.issueCandidates;
+      if (!center) return copy(map);
+      const related = await fetchMockRelated(center.id, 0);
+      if (!maps.has(map.map_id)) {
+        return fail(404, 'RESOURCE_NOT_FOUND', '탐색을 찾을 수 없습니다.');
+      }
+      const opened = fixture.nextMapId && maps.get(fixture.nextMapId);
+      if (opened) return copy(opened.map);
+      const next = createMap(map.query, [center, ...related], remaining, fixture);
+      fixture.nextMapId = next.map_id;
+      return copy(next);
     }
     await revision(map, body!);
     if (method === 'PATCH') {
@@ -263,15 +325,7 @@ export async function mockV2Request(
       parent.batch++;
     } else if (parts[2] === 'reset') {
       detached(map);
-      const source = await fetchMockNewsMap(map.query);
-      const savedId = map.map_id;
-      maps.delete(savedId);
-      const fresh = (await mockV2Request('POST', '/maps', {
-        query: source.keyword,
-      })) as ApiMap;
-      maps.delete(fresh.map_id);
-      Object.assign(map, fresh, { map_id: savedId, revision: map.revision });
-      maps.set(savedId, map);
+      Object.assign(map, initialMapContent(fixture.initialArticles));
     }
     map.revision++;
     return copy(map);
@@ -284,7 +338,7 @@ export async function mockV2Request(
         return fail(409, 'IDEMPOTENCY_CONFLICT', '같은 키의 요청이 다릅니다.');
       return copy(jobs.get(existing.job));
     }
-    const map = await owned(body!.map_id);
+    const { map } = await owned(body!.map_id);
     await revision(map, body!);
     if (body!.news_ids.length > session!.capabilities.max_report_articles)
       return fail(
@@ -332,15 +386,9 @@ export async function mockV2Request(
       return copy(job);
     }
     if (!['completed', 'failed', 'cancelled'].includes(job.status)) {
-      const steps: ReportJob['stage'][] = [
-        'queued',
-        'extracting',
-        'analyzing',
-        'verifying',
-        'strategy',
-        'saving',
-        'done',
-      ];
+      const { map } = await owned(job.map_id);
+      const mixed = map.query.trim() === MOCK_MIXED_DEBATE_QUERY;
+      const steps = mockAgentStages(mixed);
       job.stage = steps[steps.indexOf(job.stage) + 1];
       job.status = 'running';
       if (steps.indexOf(job.stage) >= 2)
@@ -351,7 +399,6 @@ export async function mockV2Request(
           failed: 0,
         };
       if (job.stage === 'done') {
-        const map = await owned(job.map_id);
         const nodes = job.request_news_ids.map(
           (id) => map.nodes.find((n) => n.news_id === id)!,
         );
@@ -364,7 +411,7 @@ export async function mockV2Request(
           event_summary: 'UI 연결 확인을 위한 합성 데이터입니다.',
           event_analysis: '실제 뉴스·모델을 호출하지 않았습니다.',
           market_impact: '실제 시장 영향 분석이 아닙니다.',
-          stock_impacts: [],
+          ...mockReportAgents(job.request_news_ids, mixed),
           risk_factors: ['로컬 fixture'],
           requested_news_ids: job.request_news_ids,
           used_evidence: nodes.map((n) => ({
@@ -385,10 +432,6 @@ export async function mockV2Request(
             failed_count: 0,
           },
           rag_evidence: [],
-          verification: {
-            status: 'unavailable',
-            notes: ['로컬 fixture · 실제 검증 없음'],
-          },
           created_at: now(),
         });
         strategies.set(strategyId, {
@@ -399,7 +442,13 @@ export async function mockV2Request(
           period: 'short',
           strategy_summary: '로컬 fixture 전략',
           risk_warning: '실제 투자 전략이 아닙니다.',
-          strategy_items: [],
+          strategy_items: [{
+            stock_name: mixed ? '[mock] 다라자동차' : '[mock] 가나반도체',
+            ticker: null,
+            action: 'watch',
+            reason: '로컬 fixture · 추가 근거를 기다립니다.',
+          }],
+          agent_trace: mockStrategyTrace,
           created_at: now(),
         });
         job.status = 'completed';
