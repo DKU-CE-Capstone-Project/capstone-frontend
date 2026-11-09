@@ -10,6 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type Ref,
+  type RefObject,
 } from 'react';
 import {
   ArrowRight,
@@ -21,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import type { NewsCard } from '../data/mockData';
+import { DIRECTION_LABEL } from '../data/reportAgents';
 import { evidenceStatus, numberEvidence } from '../data/reportEvidence';
 import {
   USE_MOCK,
@@ -33,7 +35,6 @@ import {
   type ActiveNewsMap,
   type ControllerState,
   type NewsMapData,
-  type V2Report,
 } from '../data/newsMapService';
 import {
   ancestors,
@@ -43,6 +44,7 @@ import {
   edgePaths,
   miniMap,
   ringPaths,
+  rootOverviewZoom,
   shortTitle,
   sizeOf,
   stepLayout,
@@ -54,6 +56,10 @@ import {
 } from '../layout/newsTree';
 import { useFieldSize } from '../layout/useFieldScale';
 import { useLoadingStage } from './loadingStage';
+import { AgentProgress } from './AgentProgress';
+import { AgentTimeline } from './AgentTimeline';
+import { DebateCard } from './DebateCard';
+import { VerificationCard } from './VerificationCard';
 import { CitationChips } from './CitationChips';
 import { EvidenceChain } from './EvidenceChain';
 import {
@@ -100,18 +106,9 @@ const REPORT_WIDTH = 720;
 const RING_OPACITY = [0.95, 0.5, 0.28, 0.16, 0.1, 0.07];
 const RING_WIDTH = [1.8, 1.4, 1.2, 1.1, 1, 1];
 
-const DIRECTION_LABEL: Record<
-  V2Report['stockImpacts'][number]['direction'],
-  string
-> = {
-  up: '상승 요인',
-  down: '하락 요인',
-  mixed: '혼조',
-  unknown: '방향 확인 불가',
-};
-
-type Camera = { focus: string; uz: number; pan: Vec };
+type Camera = { focus: string; uz: number | null; pan: Vec };
 type Viewport = { width: number; height: number };
+type OverviewControls = { top: number; bottom: number };
 
 type Drag = {
   x: number;
@@ -128,20 +125,31 @@ function clamp(min: number, value: number, max: number) {
 }
 
 /** 카메라 상태를 트리 범위에 맞춘다. 재검색으로 트리가 작아져도 범위를 벗어나지 않게 매번 다시 맞춘다. */
-function resolveCamera(tree: MapTree, camera: Camera, viewport: Viewport) {
+function resolveCamera(tree: MapTree, camera: Camera, fitViewport: Viewport) {
   const focus = tree.nodes[camera.focus] ?? tree.nodes.root;
-  const lim = zoomLimits(tree, focus, viewport);
+  const lim = zoomLimits(tree, focus, fitViewport);
   const base = zoomFor(focus);
-  const zoom = clamp(lim.min, base * camera.uz, lim.max);
+  const overviewZoom =
+    focus.level === 0 ? rootOverviewZoom(tree, fitViewport) : base;
+  const requestedZoom = camera.uz === null ? overviewZoom : base * camera.uz;
+  lim.min = Math.min(lim.min, overviewZoom, requestedZoom);
+  const zoom = clamp(lim.min, requestedZoom, lim.max);
   const pan = clampPan(camera.pan, zoom, focus, tree);
   return { focus, lim, base, zoom, pan };
 }
 
-/** 기본 카메라 중심은 뷰포트 정중앙(W / 2, H / 2)이며, 오른쪽 패널이 열릴 때만 남은 왼쪽 영역 중심으로 이동한다. */
-export function geometry({ width: W, height: H }: Viewport) {
+/** 기본 보기의 중심과 배율은 상단 추천 영역과 하단 탐색 버튼 사이의 공간으로 계산한다. */
+export function geometry(
+  { width: W, height: H }: Viewport,
+  controls?: OverviewControls,
+) {
+  const top = controls?.top ?? 0;
+  const bottom = controls?.bottom ?? H;
+  const cy = (top + bottom) / 2;
   return {
     cx: W / 2,
-    cy: H / 2,
+    cy,
+    overviewFitHeight: Math.max(1, bottom - top),
     /** 상세 패널이 열렸을 때 남는 왼쪽 영역의 가운데 */
     detailCx: (W - DETAIL_WIDTH) / 2,
     reportCx: (W - REPORT_WIDTH) / 2,
@@ -154,6 +162,7 @@ export function geometry({ width: W, height: H }: Viewport) {
 
 export function NewsMapExplorer({
   map,
+  bottomControlsRef,
   onExpired,
   onMap,
   onChrome,
@@ -163,6 +172,7 @@ export function NewsMapExplorer({
   orbitSpeed = 1,
 }: {
   map: ActiveNewsMap;
+  bottomControlsRef?: RefObject<HTMLElement | null>;
   onExpired: (mapId: string) => void;
   onMap: (map: import('../data/newsMapService').NewsMapData) => void;
   onChrome: (chrome: NewsMapChrome) => void;
@@ -174,11 +184,11 @@ export function NewsMapExplorer({
   orbitSpeed?: number;
 }) {
   const { ref: viewportRef, size } = useFieldSize();
+  const viewportMeasured = size.width > 0 && size.height > 0;
   const viewport: Viewport = {
     width: size.width || 1280,
     height: size.height || 832,
   };
-  const geo = geometry(viewport);
 
   // 트리는 자동 정렬이 매 프레임 제자리에서 고친다. 그리기는 frame 값으로 다시 요청한다.
   const treeRef = useRef<MapTree | null>(null);
@@ -188,7 +198,7 @@ export function NewsMapExplorer({
 
   const [camera, setCamera] = useState<Camera>({
     focus: 'root',
-    uz: 1,
+    uz: null,
     pan: { x: 0, y: 0 },
   });
   const [dragging, setDragging] = useState(false);
@@ -202,6 +212,51 @@ export function NewsMapExplorer({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [lastDetailId, setLastDetailId] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const detailNode = detailId ? (tree.nodes[detailId] ?? null) : null;
+  const panel: NewsMapPanel = reportOpen ? 'report' : detailNode ? 'detail' : 'none';
+  const nextIssue = server.map.next_issue;
+  const showNextIssue =
+    panel === 'none' && Boolean(nextIssue || server.map.can_find_next_issue);
+  const liveSel = sel.filter((id) => tree.nodes[id]);
+  const selCount = liveSel.length;
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [controls, setControls] = useState<OverviewControls>();
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    const navigation = bottomControlsRef?.current;
+    if (!dock || panel !== 'none' || !viewportMeasured) return;
+
+    const measure = () => {
+      const top = dock.offsetHeight;
+      const bottom = navigation?.offsetTop ?? size.height;
+      setControls((prev) =>
+        prev?.top === top && prev.bottom === bottom ? prev : { top, bottom },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(dock);
+    if (navigation) observer.observe(navigation);
+    return () => observer.disconnect();
+  }, [
+    bottomControlsRef,
+    panel,
+    showNextIssue,
+    size,
+    viewportMeasured,
+  ]);
+  const geo = geometry(viewport, panel === 'none' ? controls : undefined);
+  const fitViewport = { width: viewport.width, height: geo.overviewFitHeight };
+  const [animatedLayout, setAnimatedLayout] = useState<{
+    size: Viewport;
+    controls: OverviewControls | undefined;
+  }>();
+  useEffect(() => {
+    if (!viewportMeasured) return;
+    // 화면이나 컨트롤 위치가 바뀌면 새 배율을 첫 프레임에 적용한다.
+    const frame = requestAnimationFrame(() => setAnimatedLayout({ size, controls }));
+    return () => cancelAnimationFrame(frame);
+  }, [size, controls, viewportMeasured]);
   const reportPhase = server.job
     ? phaseOf(server.job.stage)
     : server.report
@@ -302,11 +357,22 @@ export function NewsMapExplorer({
           return;
         }
         if (!next.map.root) return;
-        treeRef.current = treeFromMap(
-          next.map as ActiveNewsMap,
-          treeRef.current,
-        );
-        const t = treeRef.current;
+        const previousTree = treeRef.current!;
+        const t = treeFromMap(next.map as ActiveNewsMap, previousTree);
+        treeRef.current = t;
+        // 선택·리포트 상태만 바뀌면 정렬이 끝난 카드 위치를 유지한다.
+        const layoutChanged =
+          t.order.length !== previousTree.order.length ||
+          t.order.some((id, index) => {
+            const node = t.nodes[id];
+            const previous = previousTree.nodes[id];
+            return (
+              id !== previousTree.order[index] ||
+              node.parent !== previous.parent ||
+              node.expanded !== previous.expanded ||
+              node.news.id !== previous.news.id
+            );
+          });
         setSel(
           next.map.selected_news_ids
             .map(
@@ -332,7 +398,7 @@ export function NewsMapExplorer({
           setStatus(
             `리포트 준비 · 요청 ${next.report.coverage.requested_count}건, 사용 ${next.report.coverage.used_count}건, 실패 ${next.report.coverage.failed_count}건`,
           );
-        startSim();
+        if (layoutChanged) startSim();
       }),
     [controller, onExpired, onMap, startSim],
   );
@@ -354,7 +420,7 @@ export function NewsMapExplorer({
   const center = (id: string) => {
     const n = tree.nodes[id];
     if (!n) return;
-    setCamera({ focus: id, uz: 1, pan: { x: 0, y: 0 } });
+    setCamera({ focus: id, uz: null, pan: { x: 0, y: 0 } });
     setStatus(`‘${shortTitle(n.news.title)}’ 을 가운데로 옮겼어요`);
   };
   const openDetail = (id: string) => {
@@ -418,7 +484,7 @@ export function NewsMapExplorer({
         velRef.current = {};
         loadingRef.current = null;
         setLoadingId(null);
-        setCamera({ focus: 'root', uz: 1, pan: { x: 0, y: 0 } });
+        setCamera({ focus: 'root', uz: null, pan: { x: 0, y: 0 } });
         setStatus('처음 뉴스맵으로 돌아왔어요');
         startSim();
       }),
@@ -431,7 +497,7 @@ export function NewsMapExplorer({
     detailId,
     reportOpen,
     camera,
-    viewport,
+    fitViewport,
     geo,
     openReport,
     closeReport,
@@ -443,7 +509,7 @@ export function NewsMapExplorer({
       detailId,
       reportOpen,
       camera,
-      viewport,
+      fitViewport,
       geo,
       openReport,
       closeReport,
@@ -492,7 +558,7 @@ export function NewsMapExplorer({
         base,
         zoom: z,
         pan,
-      } = resolveCamera(t, s.camera, s.viewport);
+      } = resolveCamera(t, s.camera, s.fitViewport);
       const z2 = clamp(lim.min, z * Math.exp(-e.deltaY * 0.0015), lim.max);
       const r = el.getBoundingClientRect();
       const sx = e.clientX - r.left - s.geo.cx;
@@ -523,7 +589,7 @@ export function NewsMapExplorer({
   const panDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (detailId || reportOpen) return; // 상세·리포트 중에는 화면 고정
     if (e.button !== 0) return;
-    const { pan } = resolveCamera(tree, camera, viewport);
+    const { pan } = resolveCamera(tree, camera, fitViewport);
     dragRef.current = {
       x: e.clientX,
       y: e.clientY,
@@ -549,9 +615,10 @@ export function NewsMapExplorer({
         // 이미 놓은 포인터면 캡처 없이 계속한다
       }
     }
-    const { focus, zoom } = resolveCamera(tree, camera, viewport);
+    const { focus, base, zoom } = resolveCamera(tree, camera, fitViewport);
     setCamera((c) => ({
       ...c,
+      uz: zoom / base,
       pan: clampPan({ x: d.px + dx, y: d.py + dy }, zoom, focus, tree),
     }));
     setDragging(true);
@@ -642,11 +709,9 @@ export function NewsMapExplorer({
     };
 
   // ── 그리기 값 ────────────────────────────────────────────────────
-  const { focus, zoom, pan } = resolveCamera(tree, camera, viewport);
+  const { focus, base, zoom, pan } = resolveCamera(tree, camera, fitViewport);
   const focusId = focus.id;
   const focusAnc = ancestors(tree, focusId);
-  const liveSel = sel.filter((k) => tree.nodes[k]);
-  const selCount = liveSel.length;
   const evIndex = new Map(liveSel.map((k, i) => [k, i + 1]));
   const evidenceNumbers = numberEvidence(
     liveSel.map((id) => tree.nodes[id].news.id),
@@ -657,7 +722,6 @@ export function NewsMapExplorer({
     sameIds(report.requestedNewsIds, server.map.selected_news_ids)
       ? report
       : null;
-  const detailNode = detailId ? (tree.nodes[detailId] ?? null) : null;
   const rings = ringPaths(tree, focusId);
   const edges = edgePaths(tree);
 
@@ -696,7 +760,14 @@ export function NewsMapExplorer({
       ? // 상세: 카드가 패널 왼쪽 영역 가운데에서 300px로 보이도록 확대
         `translate(${geo.detailCx}px, ${geo.cy}px) scale(${(300 / sizeOf(detailNode)).toFixed(4)}) translate(${(-detailNode.x).toFixed(2)}px, ${(-detailNode.y).toFixed(2)}px)`
       : `translate(${(geo.cx + pan.x).toFixed(1)}px, ${(geo.cy + pan.y).toFixed(1)}px) scale(${zoom.toFixed(4)}) translate(${(-focus.x).toFixed(2)}px, ${(-focus.y).toFixed(2)}px)`);
-  const camTransition = dragging
+  const fittingTree =
+    camera.uz === null && focus.level === 0 && !detailNode && !reportOpen;
+  const placeCameraImmediately =
+    animatedLayout?.size !== size ||
+    animatedLayout.controls !== controls ||
+    dragging ||
+    (fittingTree && rafRef.current !== null);
+  const camTransition = placeCameraImmediately
     ? 'none'
     : wheeling
       ? 'transform 90ms linear'
@@ -715,6 +786,7 @@ export function NewsMapExplorer({
     const wy = mini.y0 + (((e.clientY - r.top) / r.height) * 120) / mini.scale;
     setCamera((c) => ({
       ...c,
+      uz: zoom / base,
       pan: clampPan(
         { x: -zoom * (wx - focus.x), y: -zoom * (wy - focus.y) },
         zoom,
@@ -725,15 +797,7 @@ export function NewsMapExplorer({
   };
 
   // 셸에 알리는 값
-  const panel: NewsMapPanel = reportOpen
-    ? 'report'
-    : detailNode
-      ? 'detail'
-      : 'none';
-  const nextIssue = server.map.next_issue;
-  const showNextIssue =
-    panel === 'none' && Boolean(nextIssue || server.map.can_find_next_issue);
-  const compactHelp = showNextIssue && viewport.width <= 960;
+  const compactControls = viewport.width <= 1120;
   const chip = reportOpen
     ? '레포트'
     : detailNode
@@ -752,11 +816,11 @@ export function NewsMapExplorer({
 
   const evidence = liveSel.map((k) => tree.nodes[k]);
   const reportReady = reportPhase >= 3 && report !== null;
-  const steps = [
-    '본문 추출',
-    '사건·시장 영향 분석 및 검증',
-    '전략 생성 및 저장',
-  ];
+  const hasVerificationDetails = reportReady && (
+    report.claims.length > 0 ||
+    report.verification.claims_summary != null ||
+    report.verification.revision != null
+  );
   const working =
     server.job &&
     ['queued', 'running', 'cancel_requested'].includes(server.job.status);
@@ -776,10 +840,14 @@ export function NewsMapExplorer({
       <button
         type="button"
         className="btn-brand"
+        aria-label="선택한 뉴스로 리포트 만들기"
         onClick={() => openReport(null)}
       >
         <FileText size={14} aria-hidden="true" />
-        선택한 뉴스로 리포트 만들기
+        <span>
+          <span className="tray-report-prefix">선택한 뉴스로 </span>
+          리포트 만들기
+        </span>
       </button>
     </div>
   );
@@ -799,9 +867,9 @@ export function NewsMapExplorer({
   );
 
   return (
-    <div className="news-explorer">
-      {showNextIssue && (
-        <div className="next-issue-dock">
+    <div className={`news-explorer${panel === 'none' ? ' is-overview' : ''}`}>
+      <div className="news-map-dock" ref={dockRef}>
+        {showNextIssue && (
           <aside className="next-issue-offer" aria-label="다른 이슈 추천">
             <div>
               <p className="next-issue-label">같은 검색어의 다른 이슈</p>
@@ -814,9 +882,12 @@ export function NewsMapExplorer({
               <ArrowRight size={14} aria-hidden="true" />
             </button>
           </aside>
-          {selectionTray}
-        </div>
-      )}
+        )}
+        <PremiumPreview
+          maxArticles={server.map.session.capabilities.max_report_articles}
+        />
+      </div>
+      <div className="news-map-selection">{selectionTray}</div>
       <div
         ref={viewportRef}
         className={`explorer-viewport${spaceHeld ? ' space-mode' : ''}${dragging ? ' is-dragging' : ''}`}
@@ -834,7 +905,11 @@ export function NewsMapExplorer({
       >
         <div
           className="explorer-camera"
-          style={{ transform: camTransform, transition: camTransition }}
+          style={{
+            transform: camTransform,
+            transition: camTransition,
+            visibility: viewportMeasured && (panel !== 'none' || controls) ? undefined : 'hidden',
+          }}
         >
           <svg
             className="explorer-lines"
@@ -984,12 +1059,7 @@ export function NewsMapExplorer({
         </div>
       </div>
 
-      <PremiumPreview
-        maxArticles={server.map.session.capabilities.max_report_articles}
-      />
-      {!showNextIssue && selectionTray}
-
-      {compactHelp ? (
+      {compactControls ? (
         <details className="map-help is-compact">
           <summary>조작 방법</summary>
           {helpRows}
@@ -1023,11 +1093,14 @@ export function NewsMapExplorer({
         <span>처음 뉴스맵으로</span>
       </button>
 
-      <div className="map-minimap" aria-label="미니맵">
-        <div className="map-minimap-head">
+      <details
+        className={`map-minimap${compactControls ? ' is-compact' : ''}`}
+        open={!compactControls}
+      >
+        <summary className="map-minimap-head">
           <span>미니맵</span>
           <span>×{Math.round(zoom * 100) / 100}</span>
-        </div>
+        </summary>
         <button
           type="button"
           onClick={miniJump}
@@ -1073,7 +1146,7 @@ export function NewsMapExplorer({
             }}
           />
         </button>
-      </div>
+      </details>
 
       <aside
         ref={detailRef}
@@ -1180,6 +1253,7 @@ export function NewsMapExplorer({
         </div>
 
         <div className="report-sheet-body">
+          {hasVerificationDetails && <VerificationCard key={report.id} report={report} />}
           <section className="report-evidence" aria-label="근거 뉴스">
             <h3>근거 뉴스</h3>
             {evidence.map((n, i) => (
@@ -1276,32 +1350,21 @@ export function NewsMapExplorer({
               )}
             </section>
           )}
-          {!reportReady && working && (
-            <section
-              className="report-steps"
-              role="status"
-              aria-label="리포트 생성 중"
-            >
-              {steps.map((label, i) => (
-                <div
-                  key={label}
-                  className={`report-step${reportPhase >= i ? ' is-reached' : ''}`}
-                >
-                  {reportPhase > i && (
-                    <span className="step-done">
-                      <Check size={13} strokeWidth={3} aria-hidden="true" />
-                    </span>
-                  )}
-                  {reportPhase === i && <span className="step-active" />}
-                  {reportPhase < i && <span className="step-wait" />}
-                  <span>{label}</span>
-                </div>
-              ))}
-            </section>
+          {!reportReady && working && server.job && (
+            <AgentProgress key={server.job.job_id} stage={server.job.stage} />
           )}
 
           {reportReady && report && (
             <>
+              <AgentTimeline
+                reportTrace={report.reportTrace}
+                strategyTrace={report.strategyTrace}
+                coverage={report.coverage}
+                isExample={USE_MOCK}
+                reportReused={
+                  server.job?.result?.report_id === report.id && server.job.result.report_reused
+                }
+              />
               <section className="report-text">
                 <h3>사건 요약</h3>
                 <p>{report.eventSummary}</p>
@@ -1339,6 +1402,20 @@ export function NewsMapExplorer({
                   </article>
                 ))}
               </section>
+              {report.debate.length > 0 && (
+                <section className="report-text">
+                  <h3>종목별 에이전트 토론</h3>
+                  {report.debate.map((debate, index) => (
+                    <DebateCard
+                      key={`${debate.name}-${index}`}
+                      debate={debate}
+                      evidence={report.evidence}
+                      numbers={evidenceNumbers}
+                      onSelectEvidence={showEvidence}
+                    />
+                  ))}
+                </section>
+              )}
               {/* 전략 성과 차트는 실제 시세·백테스트 데이터가 없어 표시하지 않는다 (docs/10 D5) */}
               {report.strategySummary && (
                 <section className="report-strategy">

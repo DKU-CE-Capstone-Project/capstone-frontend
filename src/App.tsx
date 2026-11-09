@@ -1,4 +1,4 @@
-import { createRef, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { createRef, FormEvent, useCallback, useEffect, useRef, useState, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, FileText, Search } from 'lucide-react';
 import {
@@ -83,6 +83,7 @@ function App() {
     explorer: createRef<NewsMapExplorerHandle>(),
   }));
   const [mapChrome, setMapChrome] = useState<NewsMapChrome>(INITIAL_CHROME);
+  const bottomControlsRef = useRef<HTMLElement>(null);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   /** 뉴스맵 생성(POST /maps) 요청 토큰. Decision API 대기 동안 단계 문구를 바꾼다. */
   const [mapLoadKey, setMapLoadKey] = useState<number | null>(null);
@@ -332,6 +333,7 @@ function App() {
               {newsMap.root ? (
                 <NewsMapExplorer
                   ref={explorer}
+                  bottomControlsRef={bottomControlsRef}
                   map={newsMap as ActiveNewsMap}
                   onExpired={expired}
                   onMap={updateMap}
@@ -353,6 +355,7 @@ function App() {
 
         {screen !== 'home' && (
           <BottomControls
+            ref={bottomControlsRef}
             canGoBack={
               !loadingLabel &&
               (history.length > 0 || !!(onNewsMap && newsMap.previous_issue_map_id))
@@ -574,6 +577,7 @@ function SearchResultsView({
 
 // ── BottomControls ───────────────────────────────────────────────────
 function BottomControls({
+  ref,
   canGoBack,
   backLabel,
   onBack,
@@ -581,6 +585,7 @@ function BottomControls({
   onReport,
   reportEnabled,
 }: {
+  ref: Ref<HTMLElement>;
   canGoBack: boolean;
   backLabel: string;
   onBack: () => void;
@@ -590,6 +595,7 @@ function BottomControls({
 }) {
   return (
     <motion.nav
+      ref={ref}
       className="bottom-controls"
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}

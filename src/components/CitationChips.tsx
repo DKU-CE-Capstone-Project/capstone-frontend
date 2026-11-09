@@ -18,7 +18,8 @@ export function CitationChips({
     numbers,
   );
   return (
-    <div className="citation-chips" aria-label="인용 기사">
+    <div className="citation-chips" role="group" aria-label="근거 기사">
+      <span className="citation-label">근거 기사</span>
       {citations.map((citation) => (
         <button
           type="button"

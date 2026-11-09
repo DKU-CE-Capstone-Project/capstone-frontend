@@ -69,6 +69,17 @@ export function ringRadius(n: Pick<MapNode, 'level'>): number {
   return 250 * SHRINK ** Math.max(0, n.level - 1);
 }
 
+/** 궤도는 실제 하위 카드들의 평균 거리로 그린다. */
+function branchOrbitRadius(tree: MapTree, parent: MapNode): number {
+  const children = tree.order.filter((id) => tree.nodes[id].parent === parent.id);
+  if (!children.length) return ringRadius(parent);
+  const totalDistance = children.reduce((sum, id) => {
+    const child = tree.nodes[id];
+    return sum + Math.hypot(child.x - parent.x, child.y - parent.y);
+  }, 0);
+  return totalDistance / children.length;
+}
+
 /** 이 카드를 가운데에 둘 때의 기본 카메라 배율 */
 export function zoomFor(n: Pick<MapNode, 'level'>): number {
   return n.level <= 1 ? 1 : 1 / SHRINK ** (n.level - 1);
@@ -342,6 +353,29 @@ export function treeBounds(tree: MapTree): Bounds {
   return b;
 }
 
+/** 중앙 기사를 기준으로 펼쳐진 카드와 궤도가 모두 들어오는 기본 배율. */
+export function rootOverviewZoom(
+  tree: MapTree,
+  { width, height }: { width: number; height: number },
+): number {
+  const { x0, x1, y0, y1 } = treeBounds(tree);
+  let halfWidth = Math.max(-x0, x1, ROOT_ORBIT.rx);
+  let halfHeight = Math.max(-y0, y1, ROOT_ORBIT.ry);
+  for (const id of tree.order) {
+    const node = tree.nodes[id];
+    if (node.level === 0 || !node.expanded) continue;
+    const radius = branchOrbitRadius(tree, node);
+    halfWidth = Math.max(halfWidth, Math.abs(node.x) + radius);
+    halfHeight = Math.max(halfHeight, Math.abs(node.y) + radius);
+  }
+  const padding = Math.min(16, width / 4, height / 4);
+  return Math.min(
+    1,
+    (width / 2 - padding) / halfWidth,
+    (height / 2 - padding) / halfHeight,
+  );
+}
+
 /**
  * 최소 배율: 트리 전체가 화면에 들어오는 배율
  * 최대 배율: 가장 작은(깊은) 카드가 화면에서 300px로 보이는 배율
@@ -408,15 +442,7 @@ export function ringPaths(tree: MapTree, focusId: string): string[] {
   for (const id of tree.order) {
     const n = tree.nodes[id];
     if (n.level === 0 || !n.expanded) continue;
-    // 궤도는 실제 하위 카드들의 평균 거리로 그려 카드와 어긋나지 않게 한다
-    const kids = tree.order.filter((k) => tree.nodes[k].parent === id);
-    const rr = kids.length
-      ? kids.reduce(
-          (acc, k) =>
-            acc + Math.hypot(tree.nodes[k].x - n.x, tree.nodes[k].y - n.y),
-          0,
-        ) / kids.length
-      : ringRadius(n);
+    const rr = branchOrbitRadius(tree, n);
     addRing(id, 0, orbitArc(n.x, n.y, rr, rr));
   }
   return buckets;
