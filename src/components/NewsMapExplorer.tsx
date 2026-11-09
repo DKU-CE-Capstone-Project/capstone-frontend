@@ -108,7 +108,7 @@ const RING_WIDTH = [1.8, 1.4, 1.2, 1.1, 1, 1];
 
 type Camera = { focus: string; uz: number | null; pan: Vec };
 type Viewport = { width: number; height: number };
-type OverviewControls = { top: number; selectionHeight: number; bottom: number };
+type OverviewControls = { top: number; bottom: number };
 
 type Drag = {
   x: number;
@@ -138,7 +138,7 @@ function resolveCamera(tree: MapTree, camera: Camera, fitViewport: Viewport) {
   return { focus, lim, base, zoom, pan };
 }
 
-/** 선택 바의 높이는 배율에만 반영하고 카메라 기준점은 고정한다. */
+/** 기본 보기의 중심과 배율은 상단 추천 영역과 하단 탐색 버튼 사이의 공간으로 계산한다. */
 export function geometry(
   { width: W, height: H }: Viewport,
   controls?: OverviewControls,
@@ -146,11 +146,10 @@ export function geometry(
   const top = controls?.top ?? 0;
   const bottom = controls?.bottom ?? H;
   const cy = (top + bottom) / 2;
-  const visibleTop = top + (controls?.selectionHeight ?? 0);
   return {
     cx: W / 2,
     cy,
-    overviewFitHeight: Math.max(1, 2 * (cy - visibleTop)),
+    overviewFitHeight: Math.max(1, bottom - top),
     /** 상세 패널이 열렸을 때 남는 왼쪽 영역의 가운데 */
     detailCx: (W - DETAIL_WIDTH) / 2,
     reportCx: (W - REPORT_WIDTH) / 2,
@@ -220,40 +219,29 @@ export function NewsMapExplorer({
     panel === 'none' && Boolean(nextIssue || server.map.can_find_next_issue);
   const liveSel = sel.filter((id) => tree.nodes[id]);
   const selCount = liveSel.length;
-  const showSelectionTray = selCount > 0 && !reportOpen;
   const dockRef = useRef<HTMLDivElement>(null);
-  const selectionSlotRef = useRef<HTMLDivElement>(null);
   const [controls, setControls] = useState<OverviewControls>();
   useLayoutEffect(() => {
     const dock = dockRef.current;
-    const selection = selectionSlotRef.current;
     const navigation = bottomControlsRef?.current;
-    if (!dock || !selection || panel !== 'none' || !viewportMeasured) return;
+    if (!dock || panel !== 'none' || !viewportMeasured) return;
 
     const measure = () => {
       const top = dock.offsetHeight;
-      const selectionHeight = Math.max(0, selection.offsetTop + selection.offsetHeight - top);
       const bottom = navigation?.offsetTop ?? size.height;
-      setControls((prev) => {
-        if (
-          prev?.top === top &&
-          prev.selectionHeight === selectionHeight &&
-          prev.bottom === bottom
-        ) return prev;
-        return { top, selectionHeight, bottom };
-      });
+      setControls((prev) =>
+        prev?.top === top && prev.bottom === bottom ? prev : { top, bottom },
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(dock);
-    observer.observe(selection);
     if (navigation) observer.observe(navigation);
     return () => observer.disconnect();
   }, [
     bottomControlsRef,
     panel,
     showNextIssue,
-    showSelectionTray,
     size,
     viewportMeasured,
   ]);
@@ -265,7 +253,7 @@ export function NewsMapExplorer({
   }>();
   useEffect(() => {
     if (!viewportMeasured) return;
-    // 새 크기나 선택 바에 맞춘 배율을 첫 프레임에 적용한다.
+    // 화면이나 컨트롤 위치가 바뀌면 새 배율을 첫 프레임에 적용한다.
     const frame = requestAnimationFrame(() => setAnimatedLayout({ size, controls }));
     return () => cancelAnimationFrame(frame);
   }, [size, controls, viewportMeasured]);
@@ -836,7 +824,7 @@ export function NewsMapExplorer({
   const working =
     server.job &&
     ['queued', 'running', 'cancel_requested'].includes(server.job.status);
-  const selectionTray = showSelectionTray && (
+  const selectionTray = selCount > 0 && !reportOpen && (
     <div
       className="selection-tray"
       role="region"
@@ -899,9 +887,7 @@ export function NewsMapExplorer({
           maxArticles={server.map.session.capabilities.max_report_articles}
         />
       </div>
-      <div className="news-map-selection" ref={selectionSlotRef}>
-        {selectionTray}
-      </div>
+      <div className="news-map-selection">{selectionTray}</div>
       <div
         ref={viewportRef}
         className={`explorer-viewport${spaceHeld ? ' space-mode' : ''}${dragging ? ' is-dragging' : ''}`}
