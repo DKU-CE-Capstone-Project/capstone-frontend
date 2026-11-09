@@ -1439,6 +1439,21 @@ test('the initial overview fits asymmetric results around the centered root', ()
   assert.equal(tree.rootOverviewZoom(layout, { width: 1500, height: 900 }), 1);
 });
 
+test('the overview fits an expanded branch whose orbit extends above its cards', () => {
+  const layout = tree.treeFromMap(api.mapFromApi(map(), session));
+  const parent = layout.nodes['v2:server-diverse'];
+  const [child] = tree.addChildren(layout, parent.id, [{ ...parent.news, id: 'child' }]);
+  const orbitRadius = 250;
+  child.x = parent.x + orbitRadius;
+  child.y = parent.y;
+  parent.expanded = true;
+
+  const viewport = { width: 1254, height: 526 };
+  const zoom = tree.rootOverviewZoom(layout, viewport);
+  assert.ok((child.x + tree.sizeOf(child) / 2) * zoom < viewport.width / 2);
+  assert.ok((orbitRadius - parent.y) * zoom < viewport.height / 2);
+});
+
 test('server node IDs cannot collide with local layout IDs or root alias', () => {
   const m = map();
   m.nodes[1].node_id = 'root';

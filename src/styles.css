@@ -870,7 +870,7 @@ p {
   padding: 0 var(--space-4);
 }
 
-.next-issue-dock {
+.is-overview .news-map-dock {
   grid-row: 1;
   display: grid;
   justify-items: center;
@@ -878,12 +878,12 @@ p {
   padding: calc(var(--space-16) + var(--space-2)) var(--space-6) var(--space-3);
 }
 
-.next-issue-dock + .explorer-viewport {
+.is-overview .explorer-viewport {
   /* 하단 탐색 버튼은 캔버스 바깥에 둔다. */
   margin-block-end: calc(2 * var(--space-12));
 }
 
-.next-issue-dock .selection-tray {
+.is-overview .news-map-dock .selection-tray {
   position: static;
   transform: none;
   max-width: 100%;
@@ -944,21 +944,34 @@ p {
 }
 
 @media (max-width: 1120px) {
-  .next-issue-dock {
-    /* 오른쪽 리포트 안내와 겹치지 않는 폭을 사용한다. */
-    padding-inline: var(--space-4) calc(172px + var(--space-6) + var(--space-3));
+  .is-overview .news-map-dock {
+    grid-template-columns: minmax(0, 1fr) 172px;
+    align-items: start;
+    column-gap: var(--space-3);
+    padding-inline: var(--space-4) var(--space-6);
   }
 
-  .news-explorer:has(.next-issue-dock) .premium-preview {
-    top: calc(var(--space-16) + var(--space-2));
+  .is-overview .news-map-dock .premium-preview {
+    position: static;
+    grid-area: 1 / 2;
+    width: 100%;
   }
 
-  .news-explorer:has(.next-issue-dock) .premium-preview button {
+  .is-overview .news-map-dock .premium-preview button {
     display: none;
+  }
+
+  .is-overview .news-map-dock .selection-tray {
+    grid-row: 2;
+    grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 580px) {
+  .is-overview .news-map-dock {
+    grid-template-columns: minmax(0, 1fr) 140px;
+  }
+
   .next-issue-offer {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-2);
@@ -992,8 +1005,15 @@ p {
   column-gap: var(--space-2);
 }
 
-.map-help.is-compact:not([open]) {
+.map-help.is-compact,
+.map-minimap.is-compact {
+  bottom: var(--space-2);
+}
+
+.map-help.is-compact:not([open]),
+.map-minimap.is-compact:not([open]) {
   width: auto;
+  padding: var(--space-1) var(--space-3);
 }
 
 .map-help summary {
@@ -1030,6 +1050,19 @@ p {
   box-shadow: var(--shadow-lg);
 }
 
+@media (max-width: 580px) {
+  .map-reset {
+    left: var(--space-4);
+    justify-content: center;
+    width: 46px;
+    padding: 0;
+  }
+
+  .map-reset span {
+    display: none;
+  }
+}
+
 .map-minimap {
   position: absolute;
   z-index: var(--z-nav);
@@ -1041,21 +1074,32 @@ p {
   border: 1px solid var(--border-subtle);
   background: var(--bg-elevated);
   box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .map-minimap-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.map-minimap-head::before {
+  content: '▸';
+}
+
+.map-minimap[open] .map-minimap-head {
+  margin-bottom: 6px;
+}
+
+.map-minimap[open] .map-minimap-head::before {
+  content: '▾';
 }
 
 .map-minimap-head span:last-child {
+  margin-inline-start: auto;
   font-variant-numeric: tabular-nums;
 }
 

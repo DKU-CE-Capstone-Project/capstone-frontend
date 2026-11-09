@@ -174,15 +174,15 @@ export function NewsMapExplorer({
   /** 궤도 회전 속도 배율 */
   orbitSpeed?: number;
 }) {
-  const { ref: viewportRef, size } = useFieldSize();
+  const { ref: viewportRef, size, measure: measureViewport } = useFieldSize();
   const viewportMeasured = size.width > 0 && size.height > 0;
-  const [cameraTransitionReady, setCameraTransitionReady] = useState(false);
+  const [animatedSize, setAnimatedSize] = useState<Viewport | null>(null);
   useEffect(() => {
     if (!viewportMeasured) return;
-    // 첫 위치는 임시 크기에서 애니메이션하지 않고 실제 캔버스에 바로 그린다.
-    const frame = requestAnimationFrame(() => setCameraTransitionReady(true));
+    // 캔버스 크기가 바뀌면 새 경계에 맞춘 위치를 먼저 그린다.
+    const frame = requestAnimationFrame(() => setAnimatedSize(size));
     return () => cancelAnimationFrame(frame);
-  }, [viewportMeasured]);
+  }, [size, viewportMeasured]);
   const viewport: Viewport = {
     width: size.width || 1280,
     height: size.height || 832,
@@ -323,6 +323,7 @@ export function NewsMapExplorer({
             return (
               id !== previousTree.order[index] ||
               node.parent !== previous.parent ||
+              node.expanded !== previous.expanded ||
               node.news.id !== previous.news.id
             );
           });
@@ -716,7 +717,11 @@ export function NewsMapExplorer({
       ? // 상세: 카드가 패널 왼쪽 영역 가운데에서 300px로 보이도록 확대
         `translate(${geo.detailCx}px, ${geo.cy}px) scale(${(300 / sizeOf(detailNode)).toFixed(4)}) translate(${(-detailNode.x).toFixed(2)}px, ${(-detailNode.y).toFixed(2)}px)`
       : `translate(${(geo.cx + pan.x).toFixed(1)}px, ${(geo.cy + pan.y).toFixed(1)}px) scale(${zoom.toFixed(4)}) translate(${(-focus.x).toFixed(2)}px, ${(-focus.y).toFixed(2)}px)`);
-  const camTransition = !cameraTransitionReady || dragging
+  const fittingTree =
+    camera.uz === null && focus.level === 0 && !detailNode && !reportOpen;
+  const placeCameraImmediately =
+    animatedSize !== size || dragging || (fittingTree && rafRef.current !== null);
+  const camTransition = placeCameraImmediately
     ? 'none'
     : wheeling
       ? 'transform 90ms linear'
@@ -754,7 +759,14 @@ export function NewsMapExplorer({
   const nextIssue = server.map.next_issue;
   const showNextIssue =
     panel === 'none' && Boolean(nextIssue || server.map.can_find_next_issue);
-  const compactHelp = showNextIssue && viewport.width <= 960;
+  const showSelectionTray = selCount > 0 && !reportOpen;
+  useLayoutEffect(measureViewport, [
+    measureViewport,
+    panel,
+    showNextIssue,
+    showSelectionTray,
+  ]);
+  const compactControls = viewport.width <= 1120;
   const chip = reportOpen
     ? '레포트'
     : detailNode
@@ -781,16 +793,12 @@ export function NewsMapExplorer({
   const working =
     server.job &&
     ['queued', 'running', 'cancel_requested'].includes(server.job.status);
-  // 이슈 추천 아래 안내 영역의 높이를 고정해 선택할 때 캔버스가 밀리지 않게 한다.
-  const selectionTray = (showNextIssue || selCount > 0) && !reportOpen && (
+  const selectionTray = showSelectionTray && (
     <div
       className="selection-tray"
       role="region"
       aria-label="선택한 뉴스"
-      style={{
-        left: detailNode ? geo.detailCx : '50%',
-        visibility: selCount === 0 ? 'hidden' : undefined,
-      }}
+      style={{ left: detailNode ? geo.detailCx : '50%' }}
     >
       <span className="tray-count">
         <span className="tray-badge">{selCount}</span>건 선택됨
@@ -824,9 +832,9 @@ export function NewsMapExplorer({
   );
 
   return (
-    <div className="news-explorer">
-      {showNextIssue && (
-        <div className="next-issue-dock">
+    <div className={`news-explorer${panel === 'none' ? ' is-overview' : ''}`}>
+      <div className="news-map-dock">
+        {showNextIssue && (
           <aside className="next-issue-offer" aria-label="다른 이슈 추천">
             <div>
               <p className="next-issue-label">같은 검색어의 다른 이슈</p>
@@ -839,9 +847,12 @@ export function NewsMapExplorer({
               <ArrowRight size={14} aria-hidden="true" />
             </button>
           </aside>
-          {selectionTray}
-        </div>
-      )}
+        )}
+        {selectionTray}
+        <PremiumPreview
+          maxArticles={server.map.session.capabilities.max_report_articles}
+        />
+      </div>
       <div
         ref={viewportRef}
         className={`explorer-viewport${spaceHeld ? ' space-mode' : ''}${dragging ? ' is-dragging' : ''}`}
@@ -1013,12 +1024,7 @@ export function NewsMapExplorer({
         </div>
       </div>
 
-      <PremiumPreview
-        maxArticles={server.map.session.capabilities.max_report_articles}
-      />
-      {!showNextIssue && selectionTray}
-
-      {compactHelp ? (
+      {compactControls ? (
         <details className="map-help is-compact">
           <summary>조작 방법</summary>
           {helpRows}
@@ -1052,11 +1058,14 @@ export function NewsMapExplorer({
         <span>처음 뉴스맵으로</span>
       </button>
 
-      <div className="map-minimap" aria-label="미니맵">
-        <div className="map-minimap-head">
+      <details
+        className={`map-minimap${compactControls ? ' is-compact' : ''}`}
+        open={!compactControls}
+      >
+        <summary className="map-minimap-head">
           <span>미니맵</span>
           <span>×{Math.round(zoom * 100) / 100}</span>
-        </div>
+        </summary>
         <button
           type="button"
           onClick={miniJump}
@@ -1102,7 +1111,7 @@ export function NewsMapExplorer({
             }}
           />
         </button>
-      </div>
+      </details>
 
       <aside
         ref={detailRef}

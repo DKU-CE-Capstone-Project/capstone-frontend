@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * 컨테이너 크기를 관찰해 설계 공간(고정 px) → 실제 크기 배율을 구한다.
@@ -13,28 +13,27 @@ export function useFieldSize() {
   const ref = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Measure the layout box without the screen transition's temporary scale.
+    const { clientWidth: width, clientHeight: height } = el;
+    if (width === 0 || height === 0) return;
+    setSize((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height },
+    );
+  }, []);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-
-    const measure = () => {
-      // Measure the layout box without the screen transition's temporary scale.
-      const { clientWidth: width, clientHeight: height } = el;
-      if (width === 0 || height === 0) return;
-      setSize((prev) =>
-        prev.width === width && prev.height === height
-          ? prev
-          : { width, height },
-      );
-    };
-
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [measure]);
 
-  return { ref, size };
+  return { ref, size, measure };
 }
 
 /** 설계 공간이 컨테이너 안에 완전히 들어가는 배율. 확대는 하지 않는다. */
