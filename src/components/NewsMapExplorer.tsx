@@ -1368,7 +1368,11 @@ export function NewsMapExplorer({
             </section>
           )}
           {!reportReady && working && server.job && (
-            <AgentProgress key={server.job.job_id} stage={server.job.stage} />
+            <AgentProgress
+              key={server.job.job_id}
+              stage={server.job.stage}
+              reused={server.job.result?.report_reused}
+            />
           )}
 
           {reportReady && report && (

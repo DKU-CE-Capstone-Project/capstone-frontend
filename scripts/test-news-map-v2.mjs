@@ -49,7 +49,7 @@ await build({
   define: { 'import.meta.env': '{}' },
 });
 const { NewsMapExplorer, geometry: explorerGeometry } = await import(pathToFileURL(join(viewDir, 'components/NewsMapExplorer.js')));
-const { AgentProgress } = await import(pathToFileURL(join(viewDir, 'components/AgentProgress.js')));
+const { AgentProgress, agentSteps } = await import(pathToFileURL(join(viewDir, 'components/AgentProgress.js')));
 const { AgentTimeline } = await import(pathToFileURL(join(viewDir, 'components/AgentTimeline.js')));
 const { VerificationCard } = await import(pathToFileURL(join(viewDir, 'components/VerificationCard.js')));
 const { KeywordMap } = await import(pathToFileURL(join(viewDir, 'components/KeywordMap.js')));
@@ -521,6 +521,61 @@ test('legacy and null API fields keep optional agent views empty and legacy prog
   const parallel = renderToStaticMarkup(createElement(AgentProgress, { stage: 'debating' }));
   assert.match(parallel, /aria-current="step".*병렬 분석.*강세 분석.*약세 분석/);
   for (const stage of ['debating', 'judging', 'revising']) assert.equal(api.phaseOf(stage), 1);
+});
+
+test('report progress lists every agent step from the first poll, before any agent stage arrives', () => {
+  for (const stage of ['queued', 'extracting']) {
+    const html = renderToStaticMarkup(createElement(AgentProgress, { stage }));
+    assert.equal(html.match(/<li /g).length, 6);
+    assert.match(
+      html,
+      /aria-current="step".*본문 추출.*강세 분석.*약세 분석.*중재 판정.*근거 검증.*결과 저장.*전략 생성/,
+    );
+    assert.equal(html.match(/step-wait/g).length, 5);
+    assert.doesNotMatch(html, /사건·시장 영향 분석/);
+  }
+  const names = (steps) => steps.map((step) => `${step.stage}:${step.state}`);
+  assert.deepEqual(names(agentSteps(['extracting', 'debating', 'judging', 'verifying'], 'debate')), [
+    'extracting:done', 'debating:done', 'judging:done', 'verifying:current',
+    'saving:waiting', 'strategy:waiting',
+  ]);
+  // A stage that finished between polls still counts as done.
+  assert.deepEqual(names(agentSteps(['extracting', 'judging', 'strategy'], 'debate')), [
+    'extracting:done', 'debating:done', 'judging:done', 'verifying:done',
+    'saving:done', 'strategy:current',
+  ]);
+});
+
+test('report progress adds conditional steps only when the server reports them and never invents work', () => {
+  const names = (steps) => steps.map((step) => `${step.stage}:${step.state}`);
+  assert.deepEqual(
+    names(agentSteps(['extracting', 'debating', 'judging', 'verifying', 'revising'], 'debate')),
+    ['extracting:done', 'debating:done', 'judging:done', 'verifying:done',
+      'revising:current', 'saving:waiting', 'strategy:waiting'],
+  );
+  // Both analysts failed: the judge never ran and the plain analysis took over.
+  assert.deepEqual(names(agentSteps(['extracting', 'debating', 'analyzing'], 'debate')), [
+    'extracting:done', 'debating:done', 'judging:skipped', 'analyzing:current',
+    'verifying:waiting', 'saving:waiting', 'strategy:waiting',
+  ]);
+  // A reused report skips analysis; the list must not show it as performed.
+  assert.deepEqual(names(agentSteps(['extracting', 'strategy'], 'debate', true)), [
+    'extracting:done', 'debating:skipped', 'judging:skipped', 'verifying:skipped',
+    'saving:skipped', 'strategy:current',
+  ]);
+  const reused = renderToStaticMarkup(createElement(AgentProgress, { stage: 'strategy', reused: true }));
+  assert.equal(reused.match(/기존 결과 사용/g).length, 4);
+});
+
+test('a server without the debate keeps the three legacy steps, including when it was the last one seen', () => {
+  assert.equal(agentSteps(['extracting', 'analyzing'], 'debate'), null);
+  assert.equal(agentSteps(['extracting'], 'plain'), null);
+  assert.equal(agentSteps(['queued', 'extracting', 'debating'], 'plain').length, 6);
+  // Revision without the debate still shows its own step, as before.
+  assert.deepEqual(
+    agentSteps(['extracting', 'analyzing', 'verifying', 'revising'], 'debate').map((step) => step.stage),
+    ['extracting', 'analyzing', 'verifying', 'revising', 'saving', 'strategy'],
+  );
 });
 
 test('verification card summarizes warnings and adopted revisions while keeping details collapsed', () => {
