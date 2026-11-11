@@ -11,7 +11,11 @@ import {
   restoreNewsMap,
   deleteMap,
   forgetMap,
+  mapWasOpen,
+  rememberKeyword,
   rememberMap,
+  rememberMapOpen,
+  rememberedKeyword,
   type KeywordMapData,
   type KeywordMapNodeMeta,
   type NewsMapData,
@@ -88,6 +92,18 @@ function App() {
   /** 뉴스맵 생성(POST /maps) 요청 토큰. Decision API 대기 동안 단계 문구를 바꾼다. */
   const [mapLoadKey, setMapLoadKey] = useState<number | null>(null);
   const mapStage = useLoadingStage(mapLoadKey);
+  /** 응답을 기다리는 뉴스맵 생성 요청 수. 취소한 요청도 늦게 온 맵을 지울 때까지 센다. */
+  const [creating, setCreating] = useState(0);
+  useEffect(() => {
+    if (!creating) return;
+    // 지금 페이지를 떠나면 서버가 만든 맵의 ID를 받지 못해 지울 수 없다. 브라우저 확인창으로 한 번 막는다.
+    const confirmLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', confirmLeave);
+    return () => window.removeEventListener('beforeunload', confirmLeave);
+  }, [creating]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [recommendedKeywords, setRecommendedKeywords] = useState(
     DEFAULT_HOME_KEYWORDS,
@@ -117,6 +133,8 @@ function App() {
         if (!alive || token !== request.current || !map) return;
         mapRef.current = map;
         setNewsMap(map);
+        // 검색 화면으로 나간 뒤의 새로고침이면 그 화면에 머문다. 맵은 다음 검색이 정리하도록 들고 있는다.
+        if (!mapWasOpen()) return;
         setQuery(map.query);
         setScreen('newsMap');
       })
@@ -151,9 +169,15 @@ function App() {
     };
   }, []);
 
+  /** 화면을 바꾸고, 새로고침이 같은 화면으로 돌아오도록 뉴스맵에 있는지 기억한다. */
+  const show = (nextScreen: Screen) => {
+    rememberMapOpen(nextScreen === 'newsMap');
+    setScreen(nextScreen);
+  };
+
   const navigate = (nextScreen: Screen) => {
     setHistory((prev) => [...prev, screen]);
-    setScreen(nextScreen);
+    show(nextScreen);
   };
 
   const showMap = (map: NewsMapData) => {
@@ -169,7 +193,7 @@ function App() {
   const dismissError = useCallback(() => setErrorMsg(null), []);
 
   /** 검색어 → 키워드맵 */
-  const openCluster = async (term: string) => {
+  const openCluster = async (term: string, back = false) => {
     const current = ++request.current;
     setLoadingLabel('연관 키워드를 찾는 중…');
     setErrorMsg(null);
@@ -178,7 +202,11 @@ function App() {
       if (current !== request.current) return;
       setQuery(next.query);
       setKeywordMap(next);
-      navigate('searchResults');
+      if (back) {
+        // 뒤로 온 키워드 맵의 앞 화면은 뉴스맵이 아니라 검색창이다.
+        setHistory(['home']);
+        show('searchResults');
+      } else navigate('searchResults');
     } catch (error) {
       if (current === request.current) {
         setErrorMsg(
@@ -200,6 +228,7 @@ function App() {
     setLoadingLabel('관련 뉴스를 모으는 중…');
     setMapLoadKey(current);
     setErrorMsg(null);
+    setCreating((count) => count + 1);
     try {
       const next = await fetchNewsMap(term);
       if (current !== request.current) {
@@ -209,6 +238,7 @@ function App() {
       }
       const previous = mapRef.current;
       showMap(next);
+      rememberKeyword(keywordMap.query);
       if (previous && previous.map_id !== next.map_id)
         void deleteMap(previous, true).catch(() => undefined);
       navigate('newsMap');
@@ -222,6 +252,7 @@ function App() {
         );
       }
     } finally {
+      setCreating((count) => count - 1);
       if (current === request.current) {
         setLoadingLabel(null);
         setMapLoadKey(null);
@@ -270,10 +301,17 @@ function App() {
       void changeIssue('previous');
       return;
     }
+    // 새로고침하면 지나온 화면 기록이 사라진다. 뉴스맵을 연 키워드 맵을 다시 불러 그리로 돌아간다.
+    const keyword =
+      screen === 'newsMap' && history.length === 0 ? rememberedKeyword() : null;
+    if (keyword) {
+      void openCluster(keyword, true);
+      return;
+    }
     ++request.current;
     const previous = history[history.length - 1] ?? 'home';
     setHistory((prev) => prev.slice(0, -1));
-    setScreen(previous);
+    show(previous);
   };
 
   /** 뉴스맵 생성 대기 취소. 토큰만 올리면 늦게 온 맵은 위의 분기에서 지워지고 화면은 그대로다. */
@@ -356,10 +394,7 @@ function App() {
         {screen !== 'home' && (
           <BottomControls
             ref={bottomControlsRef}
-            canGoBack={
-              !loadingLabel &&
-              (history.length > 0 || !!(onNewsMap && newsMap.previous_issue_map_id))
-            }
+            canGoBack={!loadingLabel}
             backLabel={onNewsMap && newsMap.previous_issue_map_id ? '이전 뉴스맵' : '뒤로가기'}
             onBack={goBack}
             onSearch={() => {

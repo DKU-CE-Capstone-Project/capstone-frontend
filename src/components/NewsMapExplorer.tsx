@@ -276,10 +276,17 @@ export function NewsMapExplorer({
     row.focus({ preventScroll: true });
   };
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  /** 새로고침 전에 보낸 펼치기 요청을 이어서 기다리는 카드. newsTree의 노드 ID 규칙을 따른다. */
+  const resumedId = server.branching
+    ? server.branching === server.map.root_node_id
+      ? 'root'
+      : `v2:${server.branching}`
+    : null;
+  const busyId = loadingId ?? resumedId;
   /** 펼치기·재검색(POST /branches) 대기 단계. 그 카드에만 표시하고 다른 카드는 그대로 조작한다. */
   const branchStage = useLoadingStage(
-    loadingId,
-    loadingId && tree.nodes[loadingId]?.expanded
+    busyId,
+    busyId && tree.nodes[busyId]?.expanded
       ? '다시 검색하는 중…'
       : '하위 뉴스 검색 중…',
   );
@@ -294,6 +301,7 @@ export function NewsMapExplorer({
   const justDragged = useRef(false);
   const spaceDown = useRef(false);
   const loadingRef = useRef<string | null>(null);
+  const resumedBranch = useRef<string | null>(null);
   const wheelTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -398,6 +406,14 @@ export function NewsMapExplorer({
           setStatus(
             `리포트 준비 · 요청 ${next.report.coverage.requested_count}건, 사용 ${next.report.coverage.used_count}건, 실패 ${next.report.coverage.failed_count}건`,
           );
+        // 이어서 기다리던 펼치기가 끝나면 응답을 받았을 때와 같은 결과 안내를 남긴다.
+        const resumed = resumedBranch.current;
+        resumedBranch.current = next.branching;
+        const branch =
+          resumed && !next.branching && !next.error
+            ? next.map.branches.find((b) => b.parent_node_id === resumed)
+            : undefined;
+        if (branch) setStatus(selectionMessage(branch.last_attempt));
         if (layoutChanged) startSim();
       }),
     [controller, onExpired, onMap, startSim],
@@ -407,6 +423,7 @@ export function NewsMapExplorer({
     controller.setVisible(true);
     return () => controller.setVisible(false);
   }, [controller]);
+  useEffect(() => controller.resumeBranch(), [controller]);
 
   const closeReport = () => {
     controller.setVisible(false);
@@ -446,7 +463,7 @@ export function NewsMapExplorer({
     setStatus('선택을 모두 해제했어요');
   };
   const research = async (id: string) => {
-    if (loadingRef.current) return;
+    if (loadingRef.current || controller.state.branching) return;
     const n = tree.nodes[id];
     if (!n) return;
     loadingRef.current = id;
@@ -939,8 +956,8 @@ export function NewsMapExplorer({
             const base = baseOf(n);
             const isRoot = n.level === 0;
             const selected = sel.includes(id);
-            const isLoadingChild = loadingId !== null && n.parent === loadingId;
-            const stage = id === loadingId ? branchStage : null;
+            const isLoadingChild = busyId !== null && n.parent === busyId;
+            const stage = id === busyId ? branchStage : null;
             let isFocus = detailNode ? id === detailNode.id : id === focusId;
             // 초점 카드의 조상·형제·자손만 또렷하게, 나머지 가지는 흐리게
             const inPath =
