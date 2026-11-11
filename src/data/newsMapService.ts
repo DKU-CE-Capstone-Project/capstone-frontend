@@ -248,6 +248,11 @@ const API_BASE = (env.VITE_API_BASE ?? 'http://localhost:8000').replace(
 );
 const API = `${API_BASE}/api/v2`;
 const REF_KEY = 'econmind.v2.navigation';
+const AWAY_KEY = 'econmind.v2.away';
+const BRANCH_KEY = 'econmind.v2.branch';
+const KEYWORD_KEY = 'econmind.v2.keyword';
+/** 펼치기 요청 뒤 이만큼 지나도 맵이 그대로면 결과를 더 기다리지 않는다. */
+const BRANCH_WAIT_MS = 30_000;
 export { ServiceError } from './serviceError';
 import { ServiceError } from './serviceError';
 function retryAfterSeconds(value: string | null): number | undefined {
@@ -468,6 +473,83 @@ export function forgetMap() {
     /* Browser storage is optional. */
   }
 }
+/** 뉴스맵 화면에 있는지 기억한다. 검색 화면으로 나간 뒤의 새로고침이 떠난 맵을 다시 열지 않게 한다. */
+export function rememberMapOpen(open: boolean) {
+  try {
+    if (open) storage()?.removeItem(AWAY_KEY);
+    else storage()?.setItem(AWAY_KEY, '1');
+  } catch {
+    /* Browser storage is optional. */
+  }
+}
+export function mapWasOpen() {
+  try {
+    return storage()?.getItem(AWAY_KEY) == null;
+  } catch {
+    return true;
+  }
+}
+/** 뉴스맵을 연 키워드 맵의 검색어. 새로고침 뒤 뒤로가기가 그 키워드 맵을 다시 불러오는 데 쓴다. */
+export function rememberKeyword(query: string) {
+  try {
+    storage()?.setItem(KEYWORD_KEY, query);
+  } catch {
+    /* Browser storage is optional. */
+  }
+}
+export function rememberedKeyword() {
+  try {
+    return storage()?.getItem(KEYWORD_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+type PendingBranch = {
+  map_id: string;
+  node_id: string;
+  revision: number;
+  started_at: number;
+};
+function rememberBranch(map: NewsMapData, nodeId: string) {
+  try {
+    const pending: PendingBranch = {
+      map_id: map.map_id,
+      node_id: nodeId,
+      revision: map.revision,
+      started_at: Date.now(),
+    };
+    storage()?.setItem(BRANCH_KEY, JSON.stringify(pending));
+  } catch {
+    /* Browser storage is optional. */
+  }
+}
+function forgetBranch(mapId: string) {
+  try {
+    const pending = JSON.parse(storage()?.getItem(BRANCH_KEY) ?? 'null');
+    if (pending?.map_id === mapId) storage()?.removeItem(BRANCH_KEY);
+  } catch {
+    /* Browser storage is optional. */
+  }
+}
+/** 이 맵에 보냈지만 응답을 받지 못한 펼치기 요청. 서버가 이미 반영했거나 오래됐으면 지운다. */
+function unansweredBranch(map: NewsMapData): PendingBranch | null {
+  try {
+    const pending = JSON.parse(
+      storage()?.getItem(BRANCH_KEY) ?? 'null',
+    ) as PendingBranch | null;
+    if (pending?.map_id !== map.map_id) return null;
+    if (
+      pending.revision === map.revision &&
+      Date.now() - pending.started_at < BRANCH_WAIT_MS &&
+      map.nodes.some((node) => node.node_id === pending.node_id)
+    )
+      return pending;
+    storage()?.removeItem(BRANCH_KEY);
+  } catch {
+    /* Browser storage is optional. */
+  }
+  return null;
+}
 function rememberExistingMap(map: NewsMapData) {
   try {
     const ref = JSON.parse(storage()?.getItem(REF_KEY) ?? 'null');
@@ -583,6 +665,8 @@ export type ControllerState = {
   report: V2Report | null;
   error: string | null;
   expired: boolean;
+  /** 응답을 받지 못한 펼치기 요청의 부모 노드 ID. 결과가 맵에 반영되기를 기다리는 동안만 있다. */
+  branching: string | null;
 };
 /** Revision changes are serialized. Poll responses can update only their active job and evidence set. */
 export class NewsMapController {
@@ -604,8 +688,18 @@ export class NewsMapController {
       strategy_options: { risk_level: string; period: string };
     };
   } | null = null;
+  private branchDeadline = 0;
   constructor(map: NewsMapData) {
-    this.state = { map, job: null, report: null, error: null, expired: false };
+    const pending = unansweredBranch(map);
+    if (pending) this.branchDeadline = pending.started_at + BRANCH_WAIT_MS;
+    this.state = {
+      map,
+      job: null,
+      report: null,
+      error: null,
+      expired: false,
+      branching: pending?.node_id ?? null,
+    };
   }
   subscribe(listener: (state: ControllerState) => void) {
     this.listeners.add(listener);
@@ -726,21 +820,70 @@ export class NewsMapController {
   branch(nodeId: string, mode: 'expand' | 'research') {
     return this.serialize(async () => {
       const before = this.state.map;
-      const next = this.accept(
-        await request<ApiMap>(
-          'POST',
-          `/maps/${encodeURIComponent(before.map_id)}/branches`,
-          { expected_revision: before.revision, parent_node_id: nodeId, mode },
-        ),
-      );
-      if (!sameIds(before.selected_news_ids, next.selected_news_ids)) {
-        this.stopPolling();
-        this.emit({ job: null, report: null });
-        if (next.report_panel_open && next.selected_news_ids.length)
-          await this.startInternal(next.selected_news_ids);
+      rememberBranch(before, nodeId);
+      let next: NewsMapData;
+      try {
+        next = this.accept(
+          await request<ApiMap>(
+            'POST',
+            `/maps/${encodeURIComponent(before.map_id)}/branches`,
+            { expected_revision: before.revision, parent_node_id: nodeId, mode },
+          ),
+        );
+      } catch (error) {
+        // 서버가 거절했으면 기다릴 결과가 없다. 응답을 못 받았으면 서버가 계속 처리할 수 있어 남겨 둔다.
+        if (error instanceof ServiceError) forgetBranch(before.map_id);
+        throw error;
       }
+      forgetBranch(before.map_id);
+      await this.afterBranch(before, next);
       return next;
     });
+  }
+  private async afterBranch(before: NewsMapData, next: NewsMapData) {
+    if (sameIds(before.selected_news_ids, next.selected_news_ids)) return;
+    this.stopPolling();
+    this.emit({ job: null, report: null });
+    if (next.report_panel_open && next.selected_news_ids.length)
+      await this.startInternal(next.selected_news_ids);
+  }
+  /**
+   * 새로고침 전에 보낸 펼치기 요청의 응답은 받을 수 없다. 서버 맵의 revision이 오를 때까지 GET으로
+   * 기다리고, 응답을 기다리던 때처럼 이후 조작은 그 뒤에 보낸다. 돌려준 함수는 기다림을 멈춘다.
+   */
+  resumeBranch() {
+    const abort = new AbortController();
+    if (this.state.branching)
+      this.queue = this.queue.then(() => this.awaitBranch(abort.signal));
+    return () => abort.abort();
+  }
+  private async awaitBranch(signal: AbortSignal) {
+    if (signal.aborted || !this.state.branching) return;
+    const before = this.state.map;
+    try {
+      for (;;) {
+        const map = await request<ApiMap>(
+          'GET',
+          `/maps/${encodeURIComponent(before.map_id)}`,
+          undefined,
+          signal,
+        );
+        if (map.revision > before.revision) {
+          await this.afterBranch(before, this.accept(map));
+          break;
+        }
+        if (Date.now() >= this.branchDeadline)
+          throw new ServiceError(
+            '하위 뉴스 검색 결과를 확인하지 못했어요. 다시 시도해 주세요.',
+          );
+        await wait(1000, signal);
+      }
+    } catch (error) {
+      if (signal.aborted) return;
+      this.handle(error);
+    }
+    forgetBranch(before.map_id);
+    this.emit({ branching: null });
   }
   reset() {
     return this.serialize(async () => {

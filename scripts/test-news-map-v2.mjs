@@ -730,6 +730,25 @@ test('new session epoch discards old navigation without guessing resource owners
   assert.equal(store.size, 0);
   assert.equal(calls.length, 1);
 });
+test('leaving the map for search is remembered so refresh does not reopen it', async () => {
+  api.rememberMap(api.mapFromApi(map(), session));
+  assert.equal(api.mapWasOpen(), true);
+  api.rememberMapOpen(false);
+  server((c) => response(c.path === '/session' ? session : map()));
+  // The left map is still restored so the next search can delete it.
+  assert.equal((await api.restoreNewsMap()).map_id, 'map');
+  assert.equal(api.mapWasOpen(), false);
+  api.rememberMapOpen(true);
+  assert.equal(api.mapWasOpen(), true);
+});
+test('the keyword map that opened a news map is remembered for going back after refresh', () => {
+  assert.equal(api.rememberedKeyword(), null);
+  api.rememberKeyword('원유');
+  assert.equal(api.rememberedKeyword(), '원유');
+  api.rememberMap(api.mapFromApi(map(), session));
+  api.forgetMap();
+  assert.equal(api.rememberedKeyword(), '원유');
+});
 test('deleting old keyword map preserves the newly saved map reference', async () => {
   api.rememberMap(api.mapFromApi(map({ map_id: 'new' }), session));
   server(() => response(undefined, 204));
@@ -872,6 +891,156 @@ test('429 from branch expansion keeps the tree, shows the wait, and never retrie
   assert.deepEqual(calls.map((call) => [call.method, call.path]), [
     ['POST', '/maps/map/branches'],
   ]);
+});
+test('a branch request cut off by refresh is awaited with GETs and later actions follow its result', async () => {
+  const interrupted = controller(map());
+  server((call) =>
+    call.method === 'POST' ? new Promise(() => {}) : response(map()),
+  );
+  void interrupted.branch('server-d', 'expand').catch(() => {});
+  await until(() => calls.length === 1);
+
+  // Refresh: the response is lost and the page restores the map at the old revision.
+  calls = [];
+  const child = {
+    node_id: 'server-child',
+    news_id: 'child',
+    parent_node_id: 'server-d',
+    level: 2,
+    expanded: false,
+    batch: 1,
+    news: card('child'),
+  };
+  const expanded = map({
+    revision: 2,
+    nodes: [
+      ...map().nodes.map((n) =>
+        n.node_id === 'server-d' ? { ...n, expanded: true } : n,
+      ),
+      child,
+    ],
+    branches: [
+      ...map().branches,
+      {
+        parent_node_id: 'server-d',
+        child_node_ids: ['server-child'],
+        display_selection: selection(1),
+        last_attempt: selection(1),
+      },
+    ],
+  });
+  let polls = 0;
+  server((call) =>
+    call.method === 'PATCH'
+      ? response({ ...expanded, revision: 3, selected_news_ids: ['a'] })
+      : response(++polls < 2 ? map() : expanded),
+  );
+  const restored = controller(map());
+  assert.equal(restored.state.branching, 'server-d');
+  restored.resumeBranch();
+  await restored.select('a');
+  assert.deepEqual(
+    calls.map((call) => [call.method, call.path, call.body?.expected_revision]),
+    [
+      ['GET', '/maps/map', undefined],
+      ['GET', '/maps/map', undefined],
+      ['PATCH', '/maps/map', 2],
+    ],
+  );
+  assert.equal(restored.state.branching, null);
+  assert.equal(restored.state.map.nodes.length, 6);
+  assert.equal(store.has('econmind.v2.branch'), false);
+});
+test('a branch that never lands stops being awaited and reports it', async () => {
+  store.set(
+    'econmind.v2.branch',
+    JSON.stringify({
+      map_id: 'map',
+      node_id: 'server-d',
+      revision: 1,
+      started_at: Date.now() - 29_900,
+    }),
+  );
+  server(() => response(map()));
+  const c = controller(map());
+  assert.equal(c.state.branching, 'server-d');
+  c.resumeBranch();
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await until(() => c.state.branching === null);
+  assert.match(c.state.error, /확인하지 못했어요/);
+  assert.equal(store.has('econmind.v2.branch'), false);
+  assert.ok(calls.every((call) => call.method === 'GET'));
+});
+test('stale or already applied branch markers are dropped without waiting', () => {
+  const marker = (fields) =>
+    store.set(
+      'econmind.v2.branch',
+      JSON.stringify({
+        map_id: 'map',
+        node_id: 'server-d',
+        revision: 1,
+        started_at: Date.now(),
+        ...fields,
+      }),
+    );
+  marker({ started_at: Date.now() - 60_000 });
+  assert.equal(controller(map()).state.branching, null);
+  assert.equal(store.has('econmind.v2.branch'), false);
+  marker({});
+  assert.equal(controller(map({ revision: 2 })).state.branching, null);
+  assert.equal(store.has('econmind.v2.branch'), false);
+  marker({});
+  assert.equal(controller(map({ map_id: 'other' })).state.branching, null);
+  assert.equal(store.has('econmind.v2.branch'), true);
+});
+test('a rejected branch leaves nothing to await, while an unanswered one stays for the next load', async () => {
+  const c = controller(map());
+  server(() =>
+    response(
+      {
+        error: {
+          code: 'DEPENDENCY_UNAVAILABLE',
+          message: 'search failed',
+          retryable: true,
+          details: {},
+        },
+      },
+      503,
+    ),
+  );
+  await assert.rejects(c.branch('server-d', 'expand'), /search failed/);
+  assert.equal(store.has('econmind.v2.branch'), false);
+  server(() => {
+    throw new TypeError('Failed to fetch');
+  });
+  await assert.rejects(c.branch('server-d', 'expand'), /Failed to fetch/);
+  assert.equal(controller(map()).state.branching, 'server-d');
+});
+test('reset pressed while a cut-off branch is awaited applies to its result without a conflict', async () => {
+  store.set(
+    'econmind.v2.branch',
+    JSON.stringify({
+      map_id: 'map',
+      node_id: 'server-d',
+      revision: 1,
+      started_at: Date.now(),
+    }),
+  );
+  server((call) =>
+    response(map({ revision: call.path.endsWith('/reset') ? 3 : 2 })),
+  );
+  const c = controller(map());
+  c.resumeBranch();
+  await c.reset();
+  assert.deepEqual(
+    calls.map((call) => [call.method, call.path, call.body?.expected_revision]),
+    [
+      ['GET', '/maps/map', undefined],
+      ['POST', '/maps/map/reset', 2],
+    ],
+  );
+  assert.equal(c.state.map.revision, 3);
+  assert.equal(c.state.error, null);
 });
 test('new report sends real selected IDs, idempotency UUID and updated revision, never adds center', async () => {
   let m = map({ selected_news_ids: ['d'] });
